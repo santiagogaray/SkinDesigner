@@ -29,9 +29,9 @@ Use this component to apply a post-processing function(representation properties
 
 ghenv.Component.Name = "SkinDesigner_PP-LBHB_Output"
 ghenv.Component.NickName = 'PP-LBHB_Output'
-ghenv.Component.Message = 'VER 0.1.17\nDec_17_2017'
+ghenv.Component.Message = 'VER 0.5.00\nJul_18_2018'
 ghenv.Component.Category = "SkinDesigner"
-ghenv.Component.SubCategory = "03 | Functions"
+ghenv.Component.SubCategory = "03 | Design Controllers"
 try: ghenv.Component.AdditionalHelpFromDocStrings = "3"
 except: pass
 

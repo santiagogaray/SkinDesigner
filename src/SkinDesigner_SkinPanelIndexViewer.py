@@ -33,7 +33,7 @@ On bold are dicplayed the panels defined as Panel objects. The additional panels
 
 ghenv.Component.Name = "SkinDesigner_SkinPanelIndexViewer"
 ghenv.Component.NickName = 'SkinPanelIndexBrepViewer'
-ghenv.Component.Message = 'VER 0.1.16\nSep_22_2017'
+ghenv.Component.Message = 'VER 0.5.00\nSep_13_2018'
 ghenv.Component.Category = "SkinDesigner"
 ghenv.Component.SubCategory = "04 | Display"
 

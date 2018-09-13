@@ -38,7 +38,7 @@ Use this component to generate a custom geometry system to plug in Panel compone
 
 ghenv.Component.Name = "SkinDesigner_CustomGeometry"
 ghenv.Component.NickName = 'CustomGeometry'
-ghenv.Component.Message = 'VER 0.1.17\nDec_17_2017'
+ghenv.Component.Message = 'VER 0.5.00\nJul_18_2018'
 ghenv.Component.Category = "SkinDesigner"
 ghenv.Component.SubCategory = "02 | Parameters"
 try: ghenv.Component.AdditionalHelpFromDocStrings = "4"
@@ -53,6 +53,7 @@ accessList = ghenv.Component.Params.Input[0].Access.list
 accessItem = ghenv.Component.Params.Input[0].Access.item
 typeFloat = GhPython.Component.NewFloatHint()
 typeVector3d = gh.Parameters.Hints.GH_Vector3dHint()
+typeGHDoc = GhPython.Component.GhDocGuidHint()
 typeBool = gh.Parameters.Hints.GH_BooleanHint_CS()
 typeNull = gh.Parameters.Hints.GH_NullHint()
 

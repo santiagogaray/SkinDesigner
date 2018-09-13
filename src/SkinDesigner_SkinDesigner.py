@@ -1,6 +1,6 @@
-# SkinDesigner: A Plugin for Building Skin Design (GPL) started by Santiago Garay 
+# SkinDesigner: A Plugin for Building Skin Design (GPL) started by Santiago Garay
 
-# This file is part of SkinDesigner.(Rhino 6)
+# This file is part of SkinDesigner.
 # 
 # Copyright (c) 2017, Santiago Garay <sgaray1970@gmail.com> 
 # SkinDesigner is free software; you can redistribute it and/or modify 
@@ -36,13 +36,13 @@ This is the main SkinDesigner component which contains the Panel, Skin and BaseD
 
 ghenv.Component.Name = "SkinDesigner_SkinDesigner"
 ghenv.Component.NickName = 'SkinDesigner'
-ghenv.Component.Message = 'VER 0.1.18\nMar_15_2018'
+ghenv.Component.Message = 'VER 0.5.00\nSep_12_2018'
 ghenv.Component.Category = "SkinDesigner"
 ghenv.Component.SubCategory = "01 | Construction"
 try: ghenv.Component.AdditionalHelpFromDocStrings = "1"
 except: pass
 
-# push ladybug component to back
+# push SkinDesigner component to back
 ghenv.Component.OnPingDocument().SelectAll()
 ghenv.Component.Attributes.Selected = False
 ghenv.Component.OnPingDocument().BringSelectionToTop()
@@ -78,7 +78,7 @@ class Panel:
     
     #----------------------------------------------------------------------------------------------------------------------
     #CONSTRUCTOR ----------------------------------------------------------------------------------------------------------------------
-    def __init__(self):
+    def __init__(self, isSurfacePanel=False):
         
         #Doc Parameters
         self.__m_unitCoef = _UNIT_COEF #Coeficient used to adjust dimensions used inside Panel Class (Meter is 1)
@@ -88,11 +88,15 @@ class Panel:
         self.__m_SkinParent = None
         self.__m_SkinParentName = None
         self.__m_SkinPlacementType = None
-
+        
         #Panel Parameters
         self.__m_strName = ""
         self.__m_arrBlockInstances=[]
         self.__m_strDrawMode = "DEFAULT"
+        self.__m_blnSurfacePanelMode = isSurfacePanel
+        self.__m_intSurfacePanelSides = None
+        self.__m_arrPanelOffsetPoints = [0,0,0,0]#offset from Rectangular Panel in Surface Panel Mode
+        self.__m_ConformedPanelSurface = None
         self.__m_warningData = [] # panel warning data will be stored here
         
         #Wall Default Parameters
@@ -124,6 +128,8 @@ class Panel:
         self.__m_arrWindowBreps = [0]
         self.__m_blnShowWindow = False
         self.__m_arrWindowUserData = dict(width=0, height=0, fromLeft=0, fromBottom=0, recess = 0, thickness = 0)
+        self.__m_blnWindowConformSurfaceAsPanel  = False
+        self.__m_ConformedWindowSurface = None
         
         #Mulions Parameters (default feet units)
         self.__m_dblMullionWidth = 0.05 * self.__m_unitCoef
@@ -140,7 +146,6 @@ class Panel:
         
         self.__m_arrMullionVertUserData = [[],[],[],[],[]]
         self.__m_arrMullionHorUserData = [[],[],[],[],[]]
-        
         
         #Init Shading data
         self.__m_blnShowShading = False
@@ -170,7 +175,7 @@ class Panel:
         self.__m_CG_dblRotation = 0
         self.__m_CG_windowDepth = 0
         self.__m_CG_trimToPanelSize = False
-        
+        self.__m_CustomGeoController = None
         #-----------------------------------------------------------------------------        
         #Ladybug Parameters
         self.__m_LadybugShadeThresh = 0.1 * self.__m_unitCoef   # min value (in meters) for shading/mullions caps to be created in "LADYBUG"  draw mode)
@@ -186,7 +191,7 @@ class Panel:
     #--------PROPERTIES SECTION------------------------------------------------------------------------------
     #----------------------------------------------------------------------------------------------------------------------
     def GetName(self):
-        return self.__m_strName        
+        return self.__m_strName
         
     def SetName(self, someName):
         if "\n" in someName : self.__m_warningData.append("Invalid Name - data ignored"); return False 
@@ -219,6 +224,7 @@ class Panel:
         self.__m_arrBoundingBox = self.__ResetBoundingBox()
         
         self.UpdateWindow() #Check if window does fit in panel
+
         
     def GetThickness(self):
         return self.__m_dblWallThickness
@@ -241,19 +247,29 @@ class Panel:
     def GetDrawMode(self):
         return self.__m_strDrawMode
         
+        
     def GetPanelProperty(self, strPropName):
-        properties= ["PanelHeight", "PanelWidth", "PanelThickness", 'WindowData', "WindowVisibility", "SkinPlacement", \
-            "BoundingBox", "BlockInstances", "WarningData"]
+        properties= ["PanelHeight", "PanelWidth", "PanelThickness", "PanelOffsetPoints", "PanelCornerPoints",\
+            "PaneVisibility", "PaneName","PaneOffsetEdge", "PaneThickness", \
+            "WindowData", "WindowLeft", "WindowWidth", "WindowRight", "WindowBottom", "WindowHeight", "WindowTop", "WindowVisibility", \
+            "MullionVisibility",\
+            "ShadingVisibility", "ShadingObjects", "ShadingDataNum",\
+            "CustomGeoPlacement", "CustomGeoController", "CustomGeoOriginalBrep", \
+            "SkinPlacement", "BoundingBox", "BlockInstances", "WarningData", "SurfacePanelMode"]
         if strPropName in  properties :
             return self.__GetPanelProperty(strPropName)
         
     def __GetPanelProperty(self, strPropName):
-
+        
         PanelProperty = None
         
         #Panel Data        
         if strPropName == "PanelHeight":PanelProperty = self.__m_dblHeight
         elif strPropName ==  "PanelWidth":PanelProperty = self.__m_dblWidth
+        elif strPropName ==  "SurfacePanelMode":PanelProperty = self.__m_blnSurfacePanelMode
+        elif strPropName ==  "SurfacePanelSides":PanelProperty = self.__m_intSurfacePanelSides
+        elif strPropName ==  "PanelOffsetPoints":PanelProperty = self.__m_arrPanelOffsetPoints
+        elif strPropName ==  "PanelCornerPoints":PanelProperty = copy.deepcopy(self.__GetCornerPoints())
         #Wall Data
         elif strPropName ==  "PanelThickness":PanelProperty = self.__m_dblWallThickness
         elif strPropName ==  "WallVisibility":PanelProperty = self.__m_blnShowWall
@@ -262,9 +278,9 @@ class Panel:
         elif strPropName == "BoundingBox":PanelProperty = self.__m_arrBoundingBox
         elif strPropName ==  "DeformVisibility":PanelProperty = self.__m_blnShowDeform
         elif strPropName ==  "DeformBox":PanelProperty = self.__m_arrDeformBox
-       #Blocks Data
+        #Blocks Data
         elif strPropName == "BlockInstances":PanelProperty = self.__m_arrBlockInstances
-       #Pane Data
+        #Pane Data
         elif strPropName ==  "PaneName":PanelProperty = self.__m_strPaneName
         elif strPropName ==  "PaneVisibility":PanelProperty = self.__m_blnShowPane
         elif strPropName ==  "PaneThickness":PanelProperty = self.__m_dblPaneThickness
@@ -281,13 +297,14 @@ class Panel:
         elif strPropName ==  "WindowGlassThickness":PanelProperty = self.__m_dblWinGlassThickness
         elif strPropName ==  "WindowGlassOffset":PanelProperty = self.__m_dblWinGlassOffset
         elif strPropName ==  "WindowObjects":PanelProperty = self.__m_arrWindowBreps
-        elif strPropName == "WindowWidth":PanelProperty = self.__m_arrWindowPoints[1][0]-self.__m_arrWindowPoints[0][0]
-        elif strPropName == "WindowHeight":PanelProperty = self.__m_arrWindowPoints[2][2]-self.__m_arrWindowPoints[1][2]
-        elif strPropName == "WindowBottom":PanelProperty = self.__m_arrWindowPoints[0][2]
-        elif strPropName == "WindowTop":PanelProperty = self.GetHeight()-self.__m_arrWindowPoints[2][2]
-        elif strPropName == "WindowLeft":PanelProperty = self.__m_arrWindowPoints[0][0]
-        elif strPropName == "WindowRight":PanelProperty = self.GetWidth()-self.__m_arrWindowPoints[1][0]
+        elif strPropName == "WindowWidth": PanelProperty = (self.__m_arrWindowPoints[1][0]-self.__m_arrWindowPoints[0][0] if self.__m_blnShowWindow else False)
+        elif strPropName == "WindowHeight":PanelProperty = (self.__m_arrWindowPoints[2][2]-self.__m_arrWindowPoints[1][2] if self.__m_blnShowWindow else False)
+        elif strPropName == "WindowBottom":PanelProperty = (self.__m_arrWindowPoints[0][2] if self.__m_blnShowWindow else False)
+        elif strPropName == "WindowTop":PanelProperty = (self.GetHeight()-self.__m_arrWindowPoints[2][2] if self.__m_blnShowWindow else False)
+        elif strPropName == "WindowLeft":PanelProperty = (self.__m_arrWindowPoints[0][0] if self.__m_blnShowWindow else False)
+        elif strPropName == "WindowRight":PanelProperty = (self.GetWidth()-self.__m_arrWindowPoints[1][0] if self.__m_blnShowWindow else False)
         elif strPropName == "WindowData":PanelProperty = self.__m_arrWindowUserData
+        elif strPropName ==  "WindowConformSurfaceAsPanel":PanelProperty = self.__m_blnWindowConformSurfaceAsPanel
         #Mullion Data
         elif strPropName ==  "MullionWidth":PanelProperty = self.__m_dblMullionWidth
         elif strPropName ==  "MullionThickness":PanelProperty = self.__m_dblMullionThickness
@@ -315,6 +332,7 @@ class Panel:
         elif strPropName == "CustomGeoRotation":PanelProperty = self.__m_CG_dblRotation
         elif strPropName == "CustomGeoWindowDepth":PanelProperty = self.__m_CG_windowDepth
         elif strPropName == "CustomGeoTrimToPanel":PanelProperty = self.__m_CG_trimToPanelSize
+        elif strPropName == "CustomGeoController":PanelProperty = self.__m_CustomGeoController
         #Energy Analysis Parameters
         elif strPropName == "LB_ShadeThreshold":PanelProperty = self.__m_LadybugShadeThresh    
         #Skin Context Paramters
@@ -326,33 +344,44 @@ class Panel:
             
         return PanelProperty
         
+    def GetPanelPropertyArrayItem(self, strPropName, arrayIndex):
+        properties= ["MullionHorDataArray", "MullionHorObjArray", "MullionVertDataArray", "MullionVertObjArray", "ShadingDataArray" ]
+        if strPropName in  properties :
+            return copy.deepcopy(self.__GetPanelPropertyArray(strPropName, arrayIndex))
             
     def __GetPanelPropertyArray(self, strPropName, arrayIndex):
         
-        if strPropName ==  "MullionHorObjArray":PanelPropertyArray = self.__m_arrMullionHorBreps[arrayIndex]
-        elif strPropName ==  "MullionVertObjArray":PanelPropertyArray = self.__m_arrMullionVertBreps[arrayIndex]
-        elif strPropName ==  "MullionHorDataArray":PanelPropertyArray = self.__m_arrMullionHorUserData[arrayIndex]
-        elif strPropName ==  "MullionVertDataArray":PanelPropertyArray = self.__m_arrMullionVertUserData[arrayIndex]
-        elif strPropName ==  "ShadingDataArray":PanelPropertyArray = self.__m_arrShadingUserData[arrayIndex]
-            
+        try:
+            if strPropName ==  "MullionHorObjArray":PanelPropertyArray = self.__m_arrMullionHorBreps[arrayIndex]
+            elif strPropName ==  "MullionVertObjArray":PanelPropertyArray = self.__m_arrMullionVertBreps[arrayIndex]
+            elif strPropName ==  "MullionHorDataArray":PanelPropertyArray = self.__m_arrMullionHorUserData[arrayIndex]
+            elif strPropName ==  "MullionVertDataArray":PanelPropertyArray = self.__m_arrMullionVertUserData[arrayIndex]
+            elif strPropName ==  "ShadingDataArray":PanelPropertyArray = self.__m_arrShadingUserData[arrayIndex]
+        except:
+            return False
         return PanelPropertyArray
-
-
+        
+        
     def SetPanelProperty(self, strPropName, value ):
-        if strPropName in ["DrawMode", "SkinPlacement", "LB_ShadeThreshold", "SkinParentName"] :
+        if strPropName in ["DrawMode", "SkinPlacement", "LB_ShadeThreshold", "SkinParentName", "SurfacePanelMode",\
+            "PanelOffsetPoints", "SurfacePanelSides", "CustomGeoController"] :
             self.__SetPanelProperty(strPropName, value)
         else:
             self.__m_warningData.append("Panel Parameter "+ strPropName + " is not valid")
+            
             
     def __SetPanelProperty(self, strPropName, value ):
         
         #Panel Data        
         if strPropName == "PanelHeight":self.__m_dblHeight = value
         elif strPropName ==  "PanelWidth":self.__m_dblWidth = value
+        elif strPropName ==  "SurfacePanelMode": self.__m_blnSurfacePanelMode = value
+        elif strPropName ==  "SurfacePanelSides": self.__m_intSurfacePanelSides = value
+        elif strPropName ==  "PanelOffsetPoints": self.__m_arrPanelOffsetPoints = value
         #Wall Data
         elif strPropName ==  "PanelThickness":self.__m_dblWallThickness = value
         elif strPropName ==  "WallVisibility":self.__m_blnShowWall = value
-       #Pane Data
+        #Pane Data
         elif strPropName ==  "PaneName":self.__m_strPaneName = value
         elif strPropName ==  "PaneVisibility":self.__m_blnShowPane = value
         elif strPropName ==  "PaneThickness":self.__m_dblPaneThickness = value
@@ -372,6 +401,7 @@ class Panel:
         elif strPropName == "WindowBottom":self.__m_arrWindowUserData['fromBottom'] = value
         elif strPropName == "WindowLeft":self.__m_arrWindowUserData['fromLeft'] = value
         elif strPropName == "WindowData":self.__m_arrWindowUserData = value
+        elif strPropName == "WindowConformSurfaceAsPanel" : self.__m_blnWindowConformSurfaceAsPanel = value
         #Mullion Data
         elif strPropName ==  "MullionWidth":self.__m_dblMullionWidth = value
         elif strPropName ==  "MullionThickness":self.__m_dblMullionThickness = value
@@ -395,6 +425,7 @@ class Panel:
         elif strPropName == "CustomGeoRotation":self.__m_CG_dblRotation = value
         elif strPropName == "CustomGeoWindowDepth":self.__m_CG_windowDepth = value
         elif strPropName == "CustomGeoTrimToPanel":self.__m_CG_trimToPanelSize = value
+        elif strPropName == "CustomGeoController":self.__m_CustomGeoController = value
         #Energy Anlaysis Parameters
         elif strPropName == "LB_ShadeThreshold":self.__m_LadybugShadeThresh = value
         #Skin Context Parameters
@@ -405,10 +436,7 @@ class Panel:
         
         return
         
-
-
-
-
+        
     def __ResetBoundingBox(self):
         return [[0, 0, 0], [self.__m_dblWidth, 0, 0], [self.__m_dblWidth, self.__m_dblWallThickness, 0], \
             [0, self.__m_dblWallThickness, 0], [0, 0, self.__m_dblHeight], [self.__m_dblWidth, 0, self.__m_dblHeight], \
@@ -424,13 +452,16 @@ class Panel:
         
         #General panel properties
         self.__m_SkinParent = myPanel.__GetPanelProperty("SkinParent")
-        self.__m_SkinParentName = myPanel.__GetPanelProperty("SkinParentName")        
+        self.__m_SkinParentName = myPanel.__GetPanelProperty("SkinParentName")
         self.__m_SkinPlacementType = myPanel.__GetPanelProperty("SkinPlacement")
-
+        
         self.__m_strName = myPanel.GetName()
         self.__m_dblHeight = myPanel.__GetPanelProperty("PanelHeight") #: Wall Height
-        self.__m_dblWidth = myPanel.__GetPanelProperty("PanelWidth") # Wall Width  
+        self.__m_dblWidth = myPanel.__GetPanelProperty("PanelWidth") # Wall Width 
         
+        self.__m_blnSurfacePanelMode = myPanel.__GetPanelProperty("SurfacePanelMode")     
+        self.__m_intSurfacePanelSides  = myPanel.__GetPanelProperty("SurfacePanelSides")    
+        self.__m_arrPanelOffsetPoints  = copy.deepcopy(myPanel.__GetPanelProperty("PanelOffsetPoints")) #for  Surface Panels       
         self.__m_strDrawMode = myPanel.GetDrawMode()
         self.__m_ConditionalDefinitions = copy.deepcopy(myPanel.__GetPanelProperty("ConditionalDefinitions"))
         
@@ -457,6 +488,7 @@ class Panel:
         self.__m_dblWinGlassOffset = myPanel.__GetPanelProperty("WindowGlassOffset")
         self.__m_arrWindowPoints = copy.deepcopy(myPanel.__GetPanelProperty("WindowPoints"))
         self.__m_arrWindowUserData = copy.deepcopy(myPanel.__GetPanelProperty("WindowData"))
+        self.__m_blnWindowConformSurfaceAsPanel  = myPanel.__GetPanelProperty("WindowConformSurfaceAsPanel")
         
         #Mullion Parameters
         self.__m_blnShowMullions = myPanel.__GetPanelProperty("MullionVisibility") 
@@ -480,7 +512,7 @@ class Panel:
                 self.__m_arrMullionVertUserData.append(arrMullions)
                 
                 
-        #shading Parameetrs
+        #shading Parameters
         self.__m_blnShowShading = myPanel.__GetPanelProperty("ShadingVisibility")    
         
         self.__m_arrShadingUserData = []
@@ -500,6 +532,7 @@ class Panel:
         self.__m_CG_dblRotation = myPanel.__GetPanelProperty("CustomGeoRotation")
         self.__m_CG_windowDepth = myPanel.__GetPanelProperty("CustomGeoWindowDepth")
         self.__m_CG_trimToPanelSize = myPanel.__GetPanelProperty("CustomGeoTrimToPanel")
+        self.__m_CustomGeoController = myPanel.__GetPanelProperty("CustomGeoController")
         
         #Deform parameters
         self.__m_arrDeformBox = copy.deepcopy(myPanel.__GetPanelProperty("DeformBox")) # Wall Location
@@ -524,10 +557,11 @@ class Panel:
 
         currentLayer = rs.CurrentLayer() 
         
-        if not rs.IsLayer(parentLayerName+"::_P_0") : rs.AddLayer("_P_0", parent=parentLayerName)
-        
+        if not rs.IsLayer(parentLayerName+"::_P_0") : 
+            rs.AddLayer(parentLayerName+"::_P_0")
+            
         rs.CurrentLayer(parentLayerName+"::_P_0")
-        
+            
         #create block if not created already
         if not rs.IsBlock(strBlockName) :
             
@@ -556,7 +590,11 @@ class Panel:
             
             if self.__m_CustomGeoObjects and type(self.__m_CustomGeoObjects) == ListType and len(self.__m_CustomGeoObjects) > 0 and rs.IsObject(self.__m_CustomGeoObjects[0]):
                 arrBlockObjects += self.__m_CustomGeoObjects
-            
+                
+            #ignore panels with empty geometry
+            if len(arrBlockObjects) == 0:
+                return None
+                
             rs.AddBlock(arrBlockObjects, self.__m_arrBoundingBox[0], strBlockName)
             self.DeleteSceneObjects()
             
@@ -567,7 +605,14 @@ class Panel:
         
         #Move Bounding Box to new locatation Plane (to avoid panel depth distortions)
         arrStartPlane = rs.PlaneFromPoints(arrBoxPoints[0], arrBoxPoints[1], arrBoxPoints[4]) #Create Plane from current Boundng Box points
-        arrEndPlane = rs.PlaneFromPoints(arrAreaPanelPoints[0], arrAreaPanelPoints[1], arrAreaPanelPoints[2])#Create Plane from Panels Area points
+        #create plane from panel corner points -check for duplicate corner points(triangle panels)
+        dists = rs.Distance(arrAreaPanelPoints[0],[arrAreaPanelPoints[1], arrAreaPanelPoints[2]])
+        if dists[0] == dists[1]: 
+            arrEndPlane = rs.PlaneFromPoints(arrAreaPanelPoints[0], arrAreaPanelPoints[1], arrAreaPanelPoints[3])
+        elif 0 in dists: 
+            arrEndPlane = rs.PlaneFromPoints(arrAreaPanelPoints[1], arrAreaPanelPoints[2], arrAreaPanelPoints[3])
+        else: 
+            arrEndPlane = rs.PlaneFromPoints(arrAreaPanelPoints[0], arrAreaPanelPoints[1], arrAreaPanelPoints[2])
         
         #Apply Transf. Matrix from planes on Bounding Box
         arrXform = rs.XformRotation1(arrStartPlane, arrEndPlane)
@@ -603,8 +648,8 @@ class Panel:
     #----------------------------------------------------------------------------------------------------------------------
 
     def DeleteSceneObjects(self):
-
-        if  type(self.__m_arrWallObjects) == ListType and not type(self.__m_arrWallObjects[0]) == IntType and rs.IsObject(self.__m_arrWallObjects[0]): 
+        
+        if  type(self.__m_arrWallObjects) == ListType and len(self.__m_arrWallObjects) and not type(self.__m_arrWallObjects[0]) == IntType and rs.IsObject(self.__m_arrWallObjects[0]): 
             rs.DeleteObjects(self.__m_arrWallObjects)
      
         if  self.__m_arrPaneObjects and not type(self.__m_arrPaneObjects[0]) == IntType and rs.IsObject(self.__m_arrPaneObjects[0]):
@@ -625,11 +670,112 @@ class Panel:
         if self.__m_CustomGeoObjects and type(self.__m_CustomGeoObjects) == ListType and len(self.__m_CustomGeoObjects) > 0 and rs.IsObject(self.__m_CustomGeoObjects[0]):
             rs.DeleteObjects(self.__m_CustomGeoObjects)
 
-    #----------------------------------------------------------------------------------------------------------------------	 
-    #PANEL TRANSFORMATION SECTION
+    #----------------------------------------------------------------------------------------------------------------------
     #----------------------------------------------------------------------------------------------------------------------
     
-    #Distort/transform Morphing Bounding Box only, leave data ready for DrawMorph command
+    def __GetCornerPoints(self):
+        cornerPt1 = rg.Point3d(0,0,0)
+        cornerPt2 = rg.Point3d(self.__m_dblWidth,0,0)
+        cornerPt3 = rg.Point3d(0, 0, self.__m_dblHeight)        
+        cornerPt4 = rg.Point3d(self.__m_dblWidth, 0, self.__m_dblHeight)
+        
+        if self.GetPanelProperty("SurfacePanelMode"):
+            offsets = self.GetPanelProperty("PanelOffsetPoints")
+            if offsets[0] <> 0:
+                offsets = [rg.Point3d(of.X, 0, of.Z) for of in offsets]
+                of1, of2, of3, of4 = offsets
+                cornerPt1 += of1; cornerPt2 += of2; cornerPt3 += of3; cornerPt4 += of4
+            
+        return [cornerPt1, cornerPt2, cornerPt3, cornerPt4]
+        
+    #----------------------------------------------------------------------------------------------------------------------
+    #----------------------------------------------------------------------------------------------------------------------
+    def __GetConformedPanelSurface(self):
+        
+        if not self.GetPanelProperty("SurfacePanelMode"): return None
+        
+        if self.__m_ConformedPanelSurface <> None : return self.__m_ConformedPanelSurface
+        
+        cp1, cp2, cp4, cp3 = self.__GetCornerPoints()
+        op1 = [0,0,0]
+        op2 = [self.__GetPanelProperty("PanelWidth"),0,0]
+        op3 = [self.__GetPanelProperty("PanelWidth"),0,self.__GetPanelProperty("PanelHeight")]
+        op4 = [0,0,self.__GetPanelProperty("PanelHeight")]
+        op1, op2, op3, op4 = [rg.Point3d(p[0], p[1], p[2]) for p in [op1, op2, op3, op4]]
+        #create Surface and distort to new  surface panel shape to obtain equivalent points
+        pcSurf = rg.NurbsSurface.CreateFromCorners(op1, op2, op3, op4)
+        for u,v,p in [[0,0,cp1],[1,0,cp2],[1,1,cp3],[0,1,cp4]]:
+            pcSurf.Points.SetControlPoint(u,v,p)
+        self.__m_ConformedPanelSurface = pcSurf
+            
+        return self.__m_ConformedPanelSurface
+    
+    #----------------------------------------------------------------------------------------------------------------------
+    #----------------------------------------------------------------------------------------------------------------------
+    def __GetConformedWindowSurface(self):
+        
+        if not self.GetPanelProperty("SurfacePanelMode"): return None
+        
+        if self.__m_ConformedWindowSurface <> None : return self.__m_ConformedWindowSurface
+        
+        #Generate Shaped window points based on offset from panel edges
+        offsetLeft = self.GetPanelProperty("WindowLeft")
+        offsetRight = self.GetPanelProperty("WindowRight")
+        offsetTop = self.GetPanelProperty("WindowTop")        
+        offsetBottom = self.GetPanelProperty("WindowBottom")
+        c1, c2, c3, c4 = self.__GetCornerPoints()
+        tolerance = Rhino.RhinoDoc.ActiveDoc.ModelAbsoluteTolerance
+        wl = []
+        for lp1, lp2, offset in [[c1,c2,offsetBottom], [c4,c3,offsetTop], [c3,c1,offsetLeft], [c2,c4,offsetRight]]:
+            line = rg.LineCurve(lp1,lp2)
+            if offset > 0:
+                lc = line.Offset(rg.Plane.WorldZX, offset, tolerance, rg.CurveOffsetCornerStyle.None)[0]
+            else: lc = line
+            wl.append(rg.Line(lc.PointAtStart, lc.PointAtEnd))
+            
+        cw1 = wl[0].PointAt(rg.Intersect.Intersection.LineLine(wl[0], wl[2])[1])
+        cw2 = wl[0].PointAt(rg.Intersect.Intersection.LineLine(wl[0], wl[3])[1])
+        cw4 = wl[1].PointAt(rg.Intersect.Intersection.LineLine(wl[1], wl[2])[1])
+        cw3 = wl[1].PointAt(rg.Intersect.Intersection.LineLine(wl[1], wl[3])[1])
+        ow1, ow2, ow3, ow4  = [rg.Point3d(p[0], p[1], p[2]) for p in self.__m_arrWindowPoints]
+
+        #create Surface and distort to new window conformed to surface panel shape to obtain equivalent points
+        wcSurf = rg.NurbsSurface.CreateFromCorners(ow1, ow2, ow3, ow4)
+        for u,v,p in [[0,0,cw1],[1,0,cw2],[1,1,cw3],[0,1,cw4]]:
+            wcSurf.Points.SetControlPoint(u,v,p)
+        self.__m_ConformedWindowSurface = wcSurf
+
+        return self.__m_ConformedWindowSurface
+
+    #----------------------------------------------------------------------------------------------------------------------
+    #----------------------------------------------------------------------------------------------------------------------
+    def __BaseToSurfacePanelPoint(self, arrPoint):
+        basePoint = rg.Point3d(arrPoint[0], arrPoint[1], arrPoint[2])
+        if self.GetPanelProperty("SurfacePanelMode"):
+            #remaping of points to adjust shade to conformed shape in Surface Panel Mode
+            panelSurf = self.__GetConformedPanelSurface()
+            surfPoint= panelSurf.PointAt(basePoint.X,basePoint.Z)
+            surfPoint.Y = arrPoint[1]
+            return surfPoint
+        return basePoint
+        
+    #----------------------------------------------------------------------------------------------------------------------
+    #----------------------------------------------------------------------------------------------------------------------    
+    def __BaseToSurfaceWindowPoint(self, arrPoint):
+        basePoint = rg.Point3d(arrPoint[0], arrPoint[1], arrPoint[2])
+        if self.GetPanelProperty("SurfacePanelMode") and self.__GetPanelProperty("WindowConformSurfaceAsPanel"):
+            winSurf = self.__GetConformedWindowSurface()
+            fromPt = copy.deepcopy(self.__m_arrWindowPoints[0])
+            origin = rg.Point3d(fromPt[0], fromPt[1], fromPt[2])
+            basePoint -= origin
+            surfPoint= winSurf.PointAt(basePoint.X, basePoint.Z)
+            surfPoint.Y = arrPoint[1]
+            return surfPoint
+        return basePoint
+        
+        
+    #Distort/transform Morphing Bounding Box only, leave data ready for DrawMorph command(OBSOLETE)----------------------------------------------------------------------------------------------------------------------
+    #----------------------------------------------------------------------------------------------------------------------
     def MorphPanel(self, arrAreaPanelPoints):
         
         
@@ -650,43 +796,27 @@ class Panel:
         
         self.__m_TransformMatrix = arrXform
         
-        # Move panel corners to fill new area
-        #TopLeft
-        #arrTransVector = rs.VectorCreate(arrAreaPanelPoints[2], arrNewBoxPoints[4])
-        #arrTransPointXform = rs.XformTranslation(arrTransVector)
-        #arrNewBoxPoints[4] = rs.PointTransform(arrNewBoxPoints[4], arrTransPointXform)
-        #arrNewBoxPoints[7] = rs.PointTransform(arrNewBoxPoints[7], arrTransPointXform)
-        #TopRight
-        #arrTransVector = rs.VectorCreate(arrAreaPanelPoints[3], arrNewBoxPoints[5])
-        #arrTransPointXform = rs.XformTranslation(arrTransVector)
-        #arrNewBoxPoints[5] = rs.PointTransform(arrNewBoxPoints[5], arrTransPointXform)
-        #arrNewBoxPoints[6] = rs.PointTransform(arrNewBoxPoints[6], arrTransPointXform)
-        #BottomRight'
-        #arrTransVector = rs.VectorCreate(arrAreaPanelPoints[1], arrNewBoxPoints[1])
-        #arrTransPointXform = rs.XformTranslation(arrTransVector)
-        #arrNewBoxPoints[1] = rs.PointTransform(arrNewBoxPoints[1], arrTransPointXform)
-        #arrNewBoxPoints[2] = rs.PointTransform(arrNewBoxPoints[2], arrTransPointXform)
-        
-        
         #Store new Bounding Box ready for Draw()
         self.__m_arrDeformBox = arrNewBoxPoints
         self.__m_blnShowDeform = True
-
-
+    
+    
+    
+    
     #----------------------------------------------------------------------------------------------------------------------	 
     #PANEL CONDITIONAL DEFINITIONS SECTION
     #Data Matrix with panel properties-based conditionals and Function-based Definitions (ex: "PanelWidth < 1.0", "DeleteWindow()")    
     #----------------------------------------------------------------------------------------------------------------------
-
+    
     def AddConditionalDefinition(self, strCondition, strAction):
         
         
         if strCondition not in self.__m_ConditionalDefinitions:
             self.__m_ConditionalDefinitions[strCondition] = []
         self.__m_ConditionalDefinitions[strCondition].append(strAction)
-
-
-
+    
+    
+    
     def DeleteConditionalDefinition(self, strCondition, strAction="All"):
         
         if strCondition not in self.__m_ConditionalDefinitions: return False
@@ -701,7 +831,6 @@ class Panel:
             return True
             
         return False
-    
     
     
     def GetConditionalDefinition(self, strCondition="All"):
@@ -735,7 +864,7 @@ class Panel:
     #----------------------------------------------------------------------------------------------------------------------
             
             
-    def AddWindow(self, width=1*_UNIT_COEF, height=1*_UNIT_COEF, fromLeft="C", fromBottom="C", recess=0, thickness=0.02*_UNIT_COEF):
+    def AddWindow(self, width=1*_UNIT_COEF, height=1*_UNIT_COEF, fromLeft="C", fromBottom="C", recess=0, thickness=0.02*_UNIT_COEF, conformSurface=False):
         
         self.__m_arrWindowUserData = dict(width=width, height=height, fromLeft=fromLeft, fromBottom=fromBottom, recess = recess, thickness = thickness)
         #Panel variables
@@ -779,11 +908,13 @@ class Panel:
         self.__m_arrWindowPoints[3] = [dblGlassDisLeft, 0, dblGlassDisBottom + dblGlassHeight]
         self.__m_dblWinGlassThickness = dblGlassThickness
         self.__m_dblWinGlassOffset = dblGlassRecess
-            
+        self.__m_blnWindowConformSurfaceAsPanel = conformSurface
+
         self.ShowWindow()
         
         
-    def ModifyWindow(self, width=None, height=None, fromLeft=None, fromBottom=None, recess=None, thickness=None):
+        
+    def ModifyWindow(self, width=None, height=None, fromLeft=None, fromBottom=None, recess=None, thickness=None, conformSurface=None):
         
         if self.__m_arrWindowPoints == [0,0,0,0] : return False
         
@@ -793,16 +924,20 @@ class Panel:
         self.__m_arrWindowUserData['fromBottom'] = fromBottom if fromBottom<>None else self.__m_arrWindowUserData['fromBottom'] 
         self.__m_arrWindowUserData['recess'] = recess if recess<>None else self.__m_arrWindowUserData['recess']
         self.__m_arrWindowUserData['thickness'] = thickness if thickness<>None else self.__m_arrWindowUserData['thickness']        
-                                
+        conformSurf = conformSurface if conformSurface <> None else self.__m_blnWindowConformSurfaceAsPanel   
+        
         Window = self.__m_arrWindowUserData
-        self.AddWindow(width=Window['width'], height=Window['height'], fromLeft=Window['fromLeft'], fromBottom=Window['fromBottom'], recess=Window['recess'], thickness=Window['thickness'])
+        self.AddWindow(width=Window['width'], height=Window['height'], fromLeft=Window['fromLeft'],\
+            fromBottom=Window['fromBottom'], recess=Window['recess'], thickness=Window['thickness'], conformSurface=conformSurf)
         
         
         
     def UpdateWindow(self):
         if self.__m_arrWindowPoints == [0,0,0,0] : return False
         Window = self.__m_arrWindowUserData
-        self.AddWindow(width=Window['width'], height=Window['height'], fromLeft=Window['fromLeft'], fromBottom=Window['fromBottom'], recess=Window['recess'], thickness=Window['thickness'])
+        
+        self.AddWindow(width=Window['width'], height=Window['height'], fromLeft=Window['fromLeft'], fromBottom=Window['fromBottom'],\
+            recess=Window['recess'], thickness=Window['thickness'], conformSurface=self.__m_blnWindowConformSurfaceAsPanel)
         
         
     def DeleteWindow(self):
@@ -937,12 +1072,12 @@ class Panel:
         if  (direction == "horizontal" or direction == "Horizontal") and distance :
             if distance == "C" : distance = self.__GetPanelProperty("PanelHeight")/2.0
             strType = "Hor_fromBottom=" + str(distance)
-        elif  direction == "vertical" or direction == "Vertical" and distance:
+        elif  direction == "vertical" or direction == "Vertical" and (type(distance) == FloatType or distance == "C"):
             if distance == "C" : distance = self.__GetPanelProperty("PanelWidth")/2.0 
             strType = "Vert_fromLeft=" + str(distance)
         else: 
-            self.__m_warningData.append("Wrong 'direction' parameter on mullion: " + str(direction)) ; return
-            
+            self.__m_warningData.append("Wrong 'direction' or 'distance' parameter on mullion: " + str(direction)) ; return
+        
         self.AddMullionType(strType, width, thickness, width, capThickness)
         self.__m_blnShowMullions = True
         
@@ -1084,8 +1219,7 @@ class Panel:
                
          #Check for valid possible methods to specify sunshade values       
         if strShadingType in ["HorizontalLouver", "VerticalLouver"] :
-            #if type(fromRightTop) <> ListType or type(fromLeftBottom[0]) <> FloatType: 
-                #self.__m_warningData.append("Wrong Shading parameter fromRightTop: "+ strShadingType)  ; return
+            if type(fromRightTop) <> ListType or type(fromLeftBottom[0]) <> FloatType: self.__m_warningData.append("Wrong Shading parameter fromRightTop: "+ strShadingType)  ; return
             if spacing < width : spacing = width
             if spacing < 0.02*self.__m_unitCoef : spacing = 0.02*self.__m_unitCoef
             fromEdge = None
@@ -1153,14 +1287,19 @@ class Panel:
         shiftEnds=None ,shiftEnd1=None, shiftEnd2=None, shiftEnd1X = None, shiftEnd1Y = None, shiftEnd1Z=None, shiftEnd2X = None,\
         shiftEnd2Y = None, shiftEnd2Z=None):
         
-        if type not in self.__m_arrShadingUserData[0] : return
-        
-        shadingIndex = self.__m_arrShadingUserData[0].index(type)
-        
-        self.ModifyShadingIndex( shadingIndex, None, fromLeftBottom, fromLeft, fromBottom, fromRightTop, fromRight, fromTop, fromEdge,\
-            width, thickness, offset, spacing, rotation, layerName, shiftEnds,shiftEnd1, shiftEnd2, shiftEnd1X, shiftEnd1Y, shiftEnd1Z,\
-            shiftEnd2X, shiftEnd2Y, shiftEnd2Z)
-        
+        if type  in self.__m_arrShadingUserData[0]:
+            shadingIndex = self.__m_arrShadingUserData[0].index(type)
+            self.ModifyShadingIndex( shadingIndex, None, fromLeftBottom, fromLeft, fromBottom, fromRightTop, fromRight, fromTop, fromEdge,\
+                width, thickness, offset, spacing, rotation, layerName, shiftEnds,shiftEnd1, shiftEnd2, shiftEnd1X, shiftEnd1Y, shiftEnd1Z,\
+                shiftEnd2X, shiftEnd2Y, shiftEnd2Z)
+            return
+            
+        if type =="All":
+            for shadingIndex in range(len(self.__m_arrShadingUserData[0])):       
+                self.ModifyShadingIndex( shadingIndex, None, fromLeftBottom, fromLeft, fromBottom, fromRightTop, fromRight, fromTop, fromEdge,\
+                    width, thickness, offset, spacing, rotation, layerName, shiftEnds,shiftEnd1, shiftEnd2, shiftEnd1X, shiftEnd1Y, shiftEnd1Z,\
+                    shiftEnd2X, shiftEnd2Y, shiftEnd2Z)
+    
     
     def ModifyShadingIndex(self, index, type=None, fromLeftBottom=None, fromLeft=None, fromBottom=None, fromRightTop=None, fromRight=None,\
         fromTop=None, fromEdge=None, width=None, thickness=None, offset=None, spacing=None, rotation=None, layerName=None, shiftEnds=None,\
@@ -1230,11 +1369,10 @@ class Panel:
             self.__m_warningData.append("Panel '"+self.GetName()+"': Invalid Custom Geometry Object"); return
         
         #store parameters
-        self.__m_CustomGeoBaseData = brepCustomGeo      
-        
+        self.__m_CustomGeoBaseData = brepCustomGeo
         if str(type(self.__m_CustomGeoBaseData)) == "<type 'instance'>" : 
             self.__m_CustomGeoBreps = self.__m_CustomGeoBaseData.Run()
-            if self.__m_CustomGeoBreps == None : self.__m_CustomGeoBreps = [rg.Brep()]
+            if None in self.__m_CustomGeoBreps or self.__m_CustomGeoBreps == []: self.__m_CustomGeoBreps = [rg.Brep()]
         else:
             self.__m_CustomGeoBreps = list(brep.DuplicateBrep() for brep in self.__m_CustomGeoBaseData)
         
@@ -1245,18 +1383,13 @@ class Panel:
         if windowDepth <> None : self.__m_CG_windowDepth = windowDepth
         if trimToPanelSize <> None: self.__m_CG_trimToPanelSize = trimToPanelSize
         
+            
         #get size data
         tmpGeoBBox = rg.Brep().GetBoundingBox(True)
         for brep in self.__m_CustomGeoBreps:
             tmpGeoBBox.Union(brep.GetBoundingBox(True))
         tmpGeoSize = tmpGeoBBox.Max - tmpGeoBBox.Min
         
-        #place custom geometry at coordinates origon 0,0,0 (actually 0.001, 0.001, 0.001 to avoid potential boolean errors)       
-        vecTranslate = rg.Vector3d(tmpGeoBBox.Min)
-        for brep in self.__m_CustomGeoBreps: 
-            brep.Translate(-vecTranslate)
-            #brep.Translate(rg.Vector3d(0.001,0.001,0.001))
-            
         #rotate based on Z up value
         if self.__m_CG_vecUpVector.X == 1 :
             ptOrigin = rg.Point3d(0,tmpGeoSize.Y,0)
@@ -1303,28 +1436,54 @@ class Panel:
             if flipCG : 
                 for brep in self.__m_CustomGeoBreps: brep.Flip()
             
+        #get size data
+        tmpGeoBBox = rg.Brep().GetBoundingBox(True)
+        for brep in self.__m_CustomGeoBreps:
+            tmpGeoBBox.Union(brep.GetBoundingBox(True))
+        tmpGeoSize = tmpGeoBBox.Max - tmpGeoBBox.Min
+        
+        #place custom geometry at coordinates origon 0,0,0(tile) or center(no tile)
+        cPSCornerPts = self.__GetCornerPoints()
+        cPSBBox = rg.BoundingBox(cPSCornerPts)     
+        
+        #extract origin brep if included
+        insertPoint = None
+        if 'DGOrigin' in self.__m_CustomGeoBreps[0].GetUserStrings().AllKeys: 
+            insertPoint = self.__m_CustomGeoBreps[0].Vertices[0].Location
+        vecTranslate = None
+        if insertPoint:
+            vecTranslate = rg.Vector3d(insertPoint-cPSCornerPts[0])
+        else:
+            """
+            if self.__m_CG_blnTilable : 
+                vecTranslate = rg.Vector3d(tmpGeoBBox.Min-cPSBBox.Min)
+            else:
+                vecTranslate = rg.Vector3d(tmpGeoBBox.Center- cPSBBox.Center)
+            """
+            vecTranslate = rg.Vector3d(tmpGeoBBox.Min-cPSBBox.Min)
+            vecTranslate.Y = rg.Vector3d(tmpGeoBBox.Max-cPSBBox.Max).Y
+        
+        for brep in self.__m_CustomGeoBreps: 
+            brep.Translate(-vecTranslate)
+            
         #move based on placement data
         if not self.__m_CG_vecPlacement.IsZero:
-            for brep in self.__m_CustomGeoBreps: brep.Translate(self.__m_CG_vecPlacement)
-        
+            for brep in self.__m_CustomGeoBreps: brep.Translate(self.__m_CG_vecPlacement)   
+            
         #create rotation transformation based on rotation data
-        rotXform = rg.Transform.Rotation(math.radians(self.__m_CG_dblRotation), rg.Vector3d(0,1,0), rg.Point3d(self.GetWidth()/2,0,self.GetHeight()/2))
-        
+        rotXform = rg.Transform.Rotation(math.radians(self.__m_CG_dblRotation), rg.Vector3d(0,1,0), cPSBBox.Center)            
+            
         #tile geometry if turned on
         if self.__m_CG_blnTilable:
             #define tiling base area
-            tileAreaWidth = self.GetWidth()
-            tileAreaHeight = self.GetHeight()
+            tileAreaBBox =  rg.BoundingBox(cPSCornerPts)
             tolerance = sc.doc.ModelAbsoluteTolerance
             #recalculate required area to tile based on customGeo rotation
             if self.__m_CG_dblRotation <> 0:
-                tilePlane = rg.Plane(rg.Point3d(0,0,0), rg.Point3d(1,0,0), rg.Point3d(0,0,1))
-                tileAreaBox =  rg.Box(tilePlane, [rg.Point3d(0,0,0), rg.Point3d(self.GetWidth(),0,0),rg.Point3d(0,0,self.GetHeight())]) 
-                tileAreaBox.Transform(rotXform)      
-                tileAreaBBox = tileAreaBox.BoundingBox
-                tileAreaSize = tileAreaBBox.Max - tileAreaBBox.Min
-                tileAreaWidth = tileAreaSize.X
-                tileAreaHeight = tileAreaSize.Z
+                tileAreaBBox.Transform(rotXform)      
+            tileAreaSize = tileAreaBBox.Max - tileAreaBBox.Min
+            tileAreaWidth = tileAreaSize.X
+            tileAreaHeight = tileAreaSize.Z
             tmpGeoBBox = rg.Brep().GetBoundingBox(True)
             for brep in self.__m_CustomGeoBreps:
                 tmpGeoBBox.Union(brep.GetBoundingBox(True))
@@ -1358,7 +1517,7 @@ class Panel:
                     if zPos < tileAreaHeight: xPos -= xTrans; xTrans =0     
                     else: break
                 tmpCustomGeoBreps += tmpGeoList
-                
+
             self.__m_CustomGeoBreps = tmpCustomGeoBreps
             # relocate tiles brep to right location before rotation
             if self.__m_CG_dblRotation <> 0: 
@@ -1381,7 +1540,6 @@ class Panel:
         #set dynamic geometry parameters if available
         if dynamicGeoParams <> None and str(type(self.__m_CustomGeoBaseData)) == "<type 'instance'>" : 
             if type(dynamicGeoParams) == ListType:
-                
                 for param, value in dynamicGeoParams: self.__m_CustomGeoBaseData.SetParameter(param, value)
             else: self.__m_CustomGeoBaseData.SetParameter(dynamicGeoParams)
         
@@ -1475,7 +1633,7 @@ class Panel:
     def HideMullions(self):
         
         #Delete Mullions if Exist.
-
+        
         if self.__m_arrMullionHorObjects and not type(self.__m_arrMullionHorObjects[0]) == IntType and rs.IsObject(self.__m_arrMullionHorObjects[0]):
             rs.DeleteObjects(self.__m_arrMullionHorObjects)
 
@@ -1535,10 +1693,11 @@ class Panel:
 
     #----------------------------------------------------------------------------------------------------------------------
     #DRAW GEOMETRY SECTION-------------------------------------------------------------------------------------------------
+    
     #----------------------------------------------------------------------------------------------------------------------
 
     def Draw(self, sceneObjects = False):
-        
+
         if self.__m_blnShowWall : self.DrawWall()
         
         if self.__m_blnShowWindow : self.DrawWindow()
@@ -1554,30 +1713,44 @@ class Panel:
         if self.__m_blnShowDeform : self.DrawMorph()
         
         if sceneObjects : self.DrawSceneObjects()
-            
+        
+        return
+    
+    
     #----------------------------------------------------------------------------------------------------------------------
     #----------------------------------------------------------------------------------------------------------------------
         
     def DrawWall(self):
         
+        panelPoints = self.__GetCornerPoints()
         
         #Ignore draw wall if window is as large as panel
-        if self.__GetPanelProperty("WindowVisibility") and self.GetWidth() <= self.__GetPanelProperty("WindowWidth") and \
-            self.GetHeight() <= self.__GetPanelProperty("WindowHeight"):
-            return 
         
-        if self.GetDrawMode() == "LADYBUG" : #Wall as single sided in Ladybug draw mode
-            cornerPt1 = rg.Point3d(0,0,0)
-            cornerPt2 = rg.Point3d(self.__m_dblWidth,0,0)
-            cornerPt3 = rg.Point3d(self.__m_dblWidth, 0, self.__m_dblHeight)
-            cornerPt4 = rg.Point3d(0, 0, self.__m_dblHeight)
-            self.__m_arrWallBreps[0] = rg.Brep.CreateFromCornerPoints(cornerPt1, cornerPt2, cornerPt3, cornerPt4, sc.doc.ModelAbsoluteTolerance)
+        if self.__m_blnShowWindow :
+            windowPoints = [self.__BaseToSurfaceWindowPoint(p) for p in self.__m_arrWindowPoints]# for by-surface panels
+            w1, w2, w4, w3 = [rg.Point3d(p[0], p[1], p[2])for p in windowPoints]
+            for p,w in zip(panelPoints, [w1, w2, w3, w4]):
+                sameSize = False
+                if p <> w: break;
+                sameSize = True
+            if sameSize  : return
+        
+        cornerPt1, cornerPt2, cornerPt3, cornerPt4 = panelPoints
             
+            
+        if self.GetDrawMode() == "LADYBUG" : #Wall as single sided in Ladybug draw mode
+            wall = rg.Brep.CreateFromCornerPoints(cornerPt1, cornerPt2, cornerPt4, cornerPt3, sc.doc.ModelAbsoluteTolerance)
+            if wall <> None or wall <> []: self.__m_arrWallBreps[0] = wall
+
         else: #DEFAULT MODE 
-            #create opposite corner points for box and wall Geometry
-            cornerPt1 = rg.Point3d(0,0,0)
-            cornerPt2 = rg.Point3d(self.__m_dblWidth, self.__m_dblWallThickness, self.__m_dblHeight)   
-            self.__m_arrWallBreps[0] = rg.Brep.CreateFromBox(rg.BoundingBox(cornerPt1, cornerPt2))
+            wallCurve = rg.Curve.CreateInterpolatedCurve([cornerPt1, cornerPt2, cornerPt4, cornerPt3, cornerPt1],1)
+            extrusion = rg.Extrusion.Create(wallCurve, -self.__m_dblWallThickness, True)
+            self.__m_arrWallBreps[0]  = extrusion.ToBrep()
+                         
+        if self.__m_arrWallBreps[0] == None:
+            self.__m_warningData.append("Wall shape invalid - discarded")
+            self.__m_arrWallBreps = [0] 
+            return
             
         self.__m_blnShowWall = True
         
@@ -1586,11 +1759,16 @@ class Panel:
     
     def DrawPane(self):
         
-            
         #Ignore draw pane if window is as large as panel
-        if self.__GetPanelProperty("WindowVisibility") and self.GetWidth() <= self.__GetPanelProperty("WindowWidth") and \
-            self.GetHeight() <= self.__GetPanelProperty("WindowHeight"):
-            return 
+        if self.__m_blnShowWindow :
+            panelPoints = self.__GetCornerPoints()
+            windowPoints = [self.__BaseToSurfaceWindowPoint(p) for p in self.__m_arrWindowPoints]# for by-surface panels
+            w1, w2, w4, w3 = [rg.Point3d(p[0], p[1], p[2])for p in windowPoints]
+            for p,w in zip(panelPoints, [w1, w2, w3, w4]):
+                sameSize = False
+                if p <> w: break;
+                sameSize = True
+            if sameSize  : return        
             
         if self.GetDrawMode() == "LADYBUG" : return   #pane excluded from Ladybug draw mode
         
@@ -1601,89 +1779,104 @@ class Panel:
         OpeningObject = 0
         arrPaneObjects = []
         
-        
-        #set up pane overal dimensions
-        
-        if type(self.__m_dblPaneOffsetEdge)==ListType :                 #if a list was provided
+        #set up pane offset dimensions
+        if type(self.__m_dblPaneOffsetEdge)==ListType : #if a list was provided
             paneOffset = self.__m_dblPaneOffsetEdge     
-            for i in range(len(paneOffset),4): paneOffset.append(0)         #complete with ceros if less than 4 values.
+            for i in range(len(paneOffset),4): paneOffset.append(0) #complete with ceros if less than 4 values.
         else:  #else repeat 4 times the number
-            paneOffset = [self.__m_dblPaneOffsetEdge, self.__m_dblPaneOffsetEdge, self.__m_dblPaneOffsetEdge, self.__m_dblPaneOffsetEdge]
-
-        #Create pane base object
-        rcTolerance = sc.doc.ModelAbsoluteTolerance
-        pt1 = [paneOffset[0], 0, paneOffset[1]]
-        pt2 = [self.__m_dblWidth-paneOffset[2], 0, paneOffset[1]]
-        pt3 = [self.__m_dblWidth-paneOffset[2], 0, self.__m_dblHeight-paneOffset[3]]
-        pt4 = [paneOffset[0], 0, self.__m_dblHeight-paneOffset[3]]
-        CoverSurface = rg.Brep.CreateFromCornerPoints(rg.Point3d(pt1[0],pt1[1],pt1[2]), rg.Point3d(pt2[0],pt2[1],pt2[2]),\
-            rg.Point3d(pt3[0],pt3[1],pt3[2]), rg.Point3d(pt4[0],pt4[1],pt4[2]), rcTolerance)
-        self.__m_arrPaneBreps[0] = CoverSurface.Faces.Item[0].CreateExtrusion(\
-            rg.LineCurve(rg.Point3d(0,0,0), rg.Point3d(0, self.__m_dblPaneThickness, 0)), True)
-
-        #Create pane tiles if parameters configured
-        if self.__m_dblPaneTileWidth and self.__m_dblPaneTileHeight and self.__m_dblPaneTileThickness :
+            paneOffset = [self.__m_dblPaneOffsetEdge, self.__m_dblPaneOffsetEdge, self.__m_dblPaneOffsetEdge, self.__m_dblPaneOffsetEdge]     
+        
+        rcTolerance = sc.doc.ModelAbsoluteTolerance  
+        
+        if not self.GetPanelProperty("SurfacePanelMode"):
             
-            y = -self.__m_dblPaneTileThickness # lay tiles in front of pane base object
-            tileHeight = self.__m_dblPaneTileHeight
-            z = tileHeight/2 + paneOffset[1]; zStep = tileHeight + self.__m_dblPaneTileGap
+            pt1 = [paneOffset[0], 0, paneOffset[1]]
+            pt2 = [self.__m_dblWidth-paneOffset[2], 0, paneOffset[1]]
+            pt3 = [paneOffset[0], 0, self.__m_dblHeight-paneOffset[3]]
+            pt4 = [self.__m_dblWidth-paneOffset[2], 0, self.__m_dblHeight-paneOffset[3]]
+            pt1, pt2, pt3, pt4 = [rg.Point3d(pt[0], pt[1], pt[2]) for pt in [pt1, pt2, pt3, pt4]]
+            paneCurve = rg.Curve.CreateInterpolatedCurve([pt1, pt2, pt4, pt3, pt1],1)
             
-            while z-tileHeight/2 < (self.__m_dblHeight-paneOffset[3]) : #loop through vertical spacing
-                if z + tileHeight/2 >  (self.__m_dblHeight-paneOffset[3]) : #create custom piece height at the top
-                    tileHeight = (self.__m_dblHeight-paneOffset[3]) - (z-tileHeight/2)
-                    z = (self.__m_dblHeight-paneOffset[3]) - tileHeight/2
-                x = paneOffset[0] ; xStep = self.__m_dblPaneTileWidth + self.__m_dblPaneTileGap
-                while x <  (self.__m_dblWidth-paneOffset[2]) : #loop through horizontal spacing
-                    start = [x,y,z] ; end = [x+self.__m_dblPaneTileWidth,y,z]
-                    if end[0] > (self.__m_dblWidth-paneOffset[2]) : end[0] = (self.__m_dblWidth-paneOffset[2]) #create custom piece width at the right end
-                    #create tile
-                    member = self.DrawMember(start, end, tileHeight, self.__m_dblPaneTileThickness)
-                    if member : self.__m_arrPaneBreps.append(member)
-                    x += xStep
-                z += zStep
+        else:
+            #if SurfacePanel mode apply first offset only
+            p1, p2, p3, p4 = self.__GetCornerPoints()
+            panePts = [p1, p2, p4, p3, p1]
+            paneCurve = rg.Curve.CreateInterpolatedCurve(panePts,1)  
+            if paneOffset[0] > 0:
+                # remove (almost) coincident 4th pt in3pt panels to avoid error in offset
+                if self.__GetPanelProperty("SurfacePanelSides") == 3:
+                    panePts = []
+                    for pt, dist in [[p1, p3.DistanceTo(p1)], [p2, p1.DistanceTo(p2)], [p4, p2.DistanceTo(p4)],[p3, p4.DistanceTo(p3)]]:
+                        if dist > paneOffset[0] : panePts.append(pt)
+                    panePts += [panePts[0]]
+                    paneCurve = rg.Curve.CreateInterpolatedCurve(panePts,1)
+                #create offset curve     
+                ofCurve = paneCurve.Offset(rg.Plane.WorldZX, paneOffset[0], rcTolerance, rg.CurveOffsetCornerStyle.Sharp)
+                if ofCurve : paneCurve = ofCurve[0]
+        #create pane object
+        extrusion = rg.Extrusion.Create(paneCurve, self.__m_dblPaneThickness, True)
+        self.__m_arrPaneBreps[0] = extrusion.ToBrep()
+        
+        if not self.GetPanelProperty("SurfacePanelMode"):    
+            #Create pane tiles if parameters configured for non Surface Panels
+            if self.__m_dblPaneTileWidth and self.__m_dblPaneTileHeight and self.__m_dblPaneTileThickness :
                 
-        #Move to place(front of wall)
-        #rs.MoveObjects(self.__m_arrPaneObjects, [0, -1 * self.__m_dblPaneOffset, 0]) # Move Objects Forward in front of the Wall
-        for obj in self.__m_arrPaneBreps: obj.Translate(0, -1 * self.__m_dblPaneOffset, 0)
+                y = -self.__m_dblPaneTileThickness # lay tiles in front of pane base object
+                tileHeight = self.__m_dblPaneTileHeight
+                z = tileHeight/2 + paneOffset[1]; zStep = tileHeight + self.__m_dblPaneTileGap
+                
+                while z-tileHeight/2 < (self.__m_dblHeight-paneOffset[3]) : #loop through vertical spacing
+                    if z + tileHeight/2 >  (self.__m_dblHeight-paneOffset[3]) : #create custom piece height at the top
+                        tileHeight = (self.__m_dblHeight-paneOffset[3]) - (z-tileHeight/2)
+                        z = (self.__m_dblHeight-paneOffset[3]) - tileHeight/2
+                    x = paneOffset[0] ; xStep = self.__m_dblPaneTileWidth + self.__m_dblPaneTileGap
+                    while x <  (self.__m_dblWidth-paneOffset[2]) : #loop through horizontal spacing
+                        start = [x,y,z] ; end = [x+self.__m_dblPaneTileWidth,y,z]
+                        if end[0] > (self.__m_dblWidth-paneOffset[2]) : end[0] = (self.__m_dblWidth-paneOffset[2]) #create custom piece width at the right end
+                        #create tile
+                        member = self.DrawMember(start, end, tileHeight, self.__m_dblPaneTileThickness)
+                        if member : self.__m_arrPaneBreps.append(member)
+                        x += xStep
+                    z += zStep
+                    
+            #Move to place(front of wall)
+            for obj in self.__m_arrPaneBreps: obj.Translate(0, -1 * self.__m_dblPaneOffset, 0)
         
-        
+            
         #Create Opening
-        if self.__m_blnShowWindow :                #: If Window exists we need to subtract Window from panel base and tiles.
-            arrOpeningPoints = copy.deepcopy(self.__m_arrWindowPoints)
-
+        if self.__m_blnShowWindow : #: If Window exists we need to subtract Window from panel base and tiles.
+            arrOpeningPoints = copy.deepcopy(windowPoints)
+            
             #Avoid boolean error when subraction boxes align with panel edges
             if round(self.__GetPanelProperty("WindowLeft"),3) == 0 : arrOpeningPoints[0][0] = arrOpeningPoints[3][0] = -.1*self.__m_unitCoef
             if round(self.__GetPanelProperty("WindowRight"),3) == 0 : arrOpeningPoints[1][0] = arrOpeningPoints[2][0] = self.GetWidth()+.1*self.__m_unitCoef
             if round(self.__GetPanelProperty("WindowBottom"),3) == 0 : arrOpeningPoints[0][2] = arrOpeningPoints[1][2] = -.1*self.__m_unitCoef 
             if round(self.__GetPanelProperty("WindowTop"),3) == 0 : arrOpeningPoints[2][2] = arrOpeningPoints[3][2] = self.GetHeight()+.1*self.__m_unitCoef
             
-
             pt1, pt2, pt3, pt4 = arrOpeningPoints
             GlsSurface = rg.Brep.CreateFromCornerPoints(rg.Point3d(pt1[0],pt1[1],pt1[2]), rg.Point3d(pt2[0],pt2[1],pt2[2]),\
                 rg.Point3d(pt3[0],pt3[1],pt3[2]), rg.Point3d(pt4[0],pt4[1],pt4[2]), rcTolerance)
-            OpeningObject = GlsSurface.Faces.Item[0].CreateExtrusion(\
-                rg.LineCurve(rg.Point3d(0,0,0), rg.Point3d(0, 4*self.__m_unitCoef, 0)), True)
-            OpeningObject.Translate(0,-2*self.__m_unitCoef,0)
-            
-            arrPaneObjects = self.__m_arrPaneBreps
-            self.__m_arrPaneBreps = []
-            for index, obj in enumerate(arrPaneObjects):
-                if OpeningObject.GetBoundingBox(True).Contains(obj.GetBoundingBox(True), False) :
-                    continue
-                #boolean only works on large pane object(first item), use split on tiles
-                if  index == 0 : 
-                    boolResult = list(rg.Brep.CreateBooleanDifference(obj, OpeningObject, rcTolerance))
-                else:    
+            if GlsSurface == None : 
+                self.__m_warningData.append("Window shape invalid - opening in panel discarded")
+            else:
+                OpeningObject = GlsSurface.Faces.Item[0].CreateExtrusion(\
+                    rg.LineCurve(rg.Point3d(0,0,0), rg.Point3d(0, 4*self.__m_unitCoef, 0)), True)
+                OpeningObject.Translate(0,-2*self.__m_unitCoef,0)
+                
+                arrPaneObjects = self.__m_arrPaneBreps
+                self.__m_arrPaneBreps = []
+                for index, obj in enumerate(arrPaneObjects):
+                    if OpeningObject.GetBoundingBox(True).Contains(obj.GetBoundingBox(True), False) :
+                        continue
                     boolResult = list(rg.Brep.Split(obj, OpeningObject , rcTolerance))
-                
-                if not len(boolResult) :self.__m_arrPaneBreps += [obj]
-                
-                for piece in boolResult : 
-                    bbox = OpeningObject.GetBoundingBox(True)
-                    bbox.Inflate(.02*self.__m_unitCoef)
-                    if bbox.Contains(piece.GetBoundingBox(True), False): continue
-                    if index > 0 : piece.Flip() #flip boolean result of pane tiles (bug)
-                    self.__m_arrPaneBreps += [piece]
+                    if not len(boolResult) :self.__m_arrPaneBreps += [obj]
+                    #exclude pieces inside boolean solid
+                    for piece in boolResult : 
+                        bbox = OpeningObject.GetBoundingBox(True)
+                        bbox.Inflate(.02*self.__m_unitCoef)
+                        if bbox.Contains(piece.GetBoundingBox(True), False): continue
+                        if index > 0 : piece.Flip() #flip boolean result of pane tiles (bug)
+                        self.__m_arrPaneBreps += [piece]
                 
         self.__m_blnShowPane = True
         
@@ -1700,10 +1893,13 @@ class Panel:
         
         #Create Window Panel
         rcTolerance = sc.doc.ModelAbsoluteTolerance
-        pt1, pt2, pt3, pt4 = self.__m_arrWindowPoints
-        GlsSurface = rg.Brep.CreateFromCornerPoints(rg.Point3d(pt1[0],pt1[1],pt1[2]), rg.Point3d(pt2[0],pt2[1],pt2[2]),\
-            rg.Point3d(pt3[0],pt3[1],pt3[2]), rg.Point3d(pt4[0],pt4[1],pt4[2]), rcTolerance)
-        
+        windowPoints = [self.__BaseToSurfaceWindowPoint(p) for p in self.__m_arrWindowPoints]# for by-surface panels
+        pt1, pt2, pt3, pt4 = windowPoints
+        GlsSurface = rg.Brep.CreateFromCornerPoints(pt1, pt2, pt3, pt4, rcTolerance)
+        if GlsSurface == None : 
+            self.__m_warningData.append("Window shape invalid - discarded")
+            return
+            
         if self.GetDrawMode() == "LADYBUG" and self.__m_dblWinGlassThickness > 0:
             self.__m_arrWindowBreps[0] = GlsSurface #in LADYBUG mode only glass pane is drawn
             #Move to place
@@ -1729,12 +1925,16 @@ class Panel:
                 rg.LineCurve(rg.Point3d(0,0,0), rg.Point3d(0, self.__m_dblWallThickness, 0)), True)
             wallObjectTemp = self.__m_arrWallBreps[0]
             wallBreps = rg.Brep.CreateBooleanDifference(wallObjectTemp, GlassObjectTemp, rcTolerance)
-            if wallBreps : self.__m_arrWallBreps = list(wallBreps)
-            else: self.__m_arrWallBreps = [0]
-
+            self.__m_arrWallBreps = list(wallBreps)
+            
+            if wallBreps == None or  wallBreps == []:
+                self.__m_warningData.append("Wall shape invalid - discarded")
+                self.__m_arrWallBreps = [0] 
+                return
+                
         self.__m_blnShowWindow = True
         
-        
+
     #----------------------------------------------------------------------------------------------------------------------
     #----------------------------------------------------------------------------------------------------------------------
         
@@ -1752,14 +1952,13 @@ class Panel:
                     self.__m_arrMullionHorUserData[3][i], self.__m_arrMullionHorUserData[4][i])
                 if type(mullionObjList) == ListType and mullionObjList[0]: 
                     self.__m_arrMullionHorBreps.append(mullionObjList)
-
                 
         #Vertical
         if len(self.__m_arrMullionVertUserData[0])  :
             for i in range(len(self.__m_arrMullionVertUserData[0])):
                 mullionObjList = self.DrawMullionType(self.__m_arrMullionVertUserData[0][i], self.__m_arrMullionVertUserData[1][i], self.__m_arrMullionVertUserData[2][i],\
                     self.__m_arrMullionVertUserData[3][i], self.__m_arrMullionVertUserData[4][i])
-                if type(mullionObjList) == ListType and mullionObjList[0]: 
+                if type(mullionObjList) == ListType and mullionObjList[0]:
                     self.__m_arrMullionVertBreps.append(mullionObjList)
                     
         if not self.__m_arrMullionHorBreps : self.__m_arrMullionHorBreps = [0]
@@ -1769,39 +1968,86 @@ class Panel:
     #------------------------------------------------------------------------------------------------------------------------------------
     #------------------------------------------------------------------------------------------------------------------------------------
     #    Mullion/Cap creation data based on their type 
-    
+        
     def DrawMullionType(self, strMullionType, dblWidth, dblThickness, dblCapWidth, dblCapThickness):
         
         if dblThickness == 0 or dblWidth == 0 : return None
         if not self.__m_blnShowWindow and "Window" in strMullionType : return #ignore window mullions if no window
         
-        arrHorPoints = [] #'Four Horizontal  points defined by panel width and window location stored as(X,0,0) 
-        arrVertPoints = [] #'Four Vertical  points defined by panel width and window location stored as (0,0,Z)
         arrDeltaPoint = [] # 'Distance from 0,0,0 depending the mullion type (an X value for vertical mullions, Z value for Horizonal)
-
+        fromLeft = 0; fromBottom = 0
         arrMullionPoints = [] 
-        arrCapMullionPoints= [] #'The final points that result from adding arrDeltaPoint to arrVertPoints or arrHorPoints
-        
+        arrCapMullionPoints= [] #'The final points that result from adding arrDeltaPoint to arrMullionPoints
         arrXform = [] #'Transformation Matrix needed for the addition of arrDeltaPont
         arrMullions = [] # 'array storing the mullions
-
         dblYOffset = -self.__m_dblPaneOffset + self.__m_dblPaneThickness + .004 * self.__m_unitCoef ###Use this version to tie panel to mullion face.###
         #dblYOffset = self.__m_dblPaneThickness + 0.125 / 12 / 2.54 # Mullion Y location (2.54 converting feet to meters)
-        
         bWindowFrame = False #sets on window frame mode (vs mullion mode)
         
-        #Populating array with panel dimensions (no window points divisions)
-        arrHorPoints = [[0, 0, 0], [self.__m_dblWidth, 0, 0]]
-        arrVertPoints = [[0, 0, 0], [0, 0, self.__m_dblHeight]]
+        #get intersectin between 2 lines (2 groups of point pairs)
+        def Intersect(pGroup, dir=1):
+            cp1, cp2 , wp1, wp2 = pGroup
+            vecA = rg.Vector3d(wp1-wp2); vecB= rg.Vector3d(cp2-cp1)
+            angleC = rg.Vector3d.VectorAngle(vecA, vecB)
+            sideC = wp2.DistanceTo(cp1)
+            vecC = rg.Vector3d(wp2-cp1)
+            angleB = rg.Vector3d.VectorAngle(vecB, vecC)
+            sideB = math.sin(angleB)*sideC/math.sin(angleC)
+            offsetVec = (vecA/vecA.Length*sideB)
+            finalPt= wp2 + offsetVec*dir
+            return finalPt
+             
+        c1, c2, c3, c4 = self.__GetCornerPoints()          
+        if self.__m_blnShowWindow : 
+            windowPoints = [self.__BaseToSurfaceWindowPoint(p) for p in self.__m_arrWindowPoints]# for by-surface panels
+            w1, w2, w4, w3 = windowPoints
+        #find 4 points for each mulloin type (if window presetn and different cap thickneses secified)
+        if strMullionType == "PanelBottom" : 
+            if self.__m_blnShowWindow : arrMullionPoints = [c1, Intersect([c1,c2,w1,w3]),Intersect([c1,c2,w2,w4]), c2]
+            else: arrMullionPoints = [c1, c2]
+        elif strMullionType == "PanelTop" : 
+            if self.__m_blnShowWindow : arrMullionPoints = [c3, Intersect([c3,c4,w1,w3],-1),Intersect([c3,c4,w2,w4],-1), c4]
+            else: arrMullionPoints = [c3, c4]
+        elif strMullionType == "PanelLeft" : 
+            if self.__m_blnShowWindow : arrMullionPoints = [c1, Intersect([c1,c3,w1,w2]),Intersect([c1,c3,w3,w4]), c3]
+            else: arrMullionPoints = [c1, c3]
+        elif strMullionType == "PanelRight" : 
+            if self.__m_blnShowWindow : arrMullionPoints = [c2, Intersect([c2,c4,w1,w2],-1),Intersect([c2,c4,w3,w4],-1), c4]
+            else: arrMullionPoints = [c2, c4]
+        elif strMullionType == "WindowBottom" : arrMullionPoints = [Intersect([c1,c3,w1,w2]), w1, w2, Intersect([c2,c4,w1,w2],-1)]
+        elif strMullionType == "WindowTop" : arrMullionPoints = [Intersect([c1,c3,w3,w4]), w3, w4, Intersect([c2,c4,w3,w4],-1)]                
+        elif strMullionType == "WindowLeft" : arrMullionPoints = [Intersect([c1,c2,w1,w3]), w1, w3, Intersect([c3,c4,w1,w3],-1)]
+        elif strMullionType == "WindowRight" : arrMullionPoints = [Intersect([c1,c2,w2,w4]),w2, w4, Intersect([c3,c4,w2,w4],-1)]      
+        elif "Hor_" in strMullionType :
+            strData = strMullionType[4:len(strMullionType)]
+            codeObj= compile(strData,'<string>','single')
+            eval(codeObj)
+            line = rg.LineCurve(c1,c4)
+            m1 = line.PointAtNormalizedLength(0.5); m2 = rg.Point3d(m1); m2.X += 0.01*self.__m_unitCoef
+            m1.Z = m2.Z = fromBottom
+            if self.__m_blnShowWindow :
+                arrMullionPoints = [Intersect([c1,c3,m1,m2]), Intersect([w1,w3,m1,m2]), Intersect([w2,w4,m1,m2],-1), Intersect([c2,c4,m1,m2],-1)]
+            else: arrMullionPoints = [Intersect([c1,c3,m1,m2]), Intersect([c2,c4,m1,m2],-1)] 
+        elif "Vert_" in strMullionType :
+            strData = strMullionType[5:len(strMullionType)]
+            codeObj= compile(strData,'<string>','single')
+            eval(codeObj)
+            line = rg.LineCurve(c1,c4)
+            m1 = line.PointAtNormalizedLength(0.5); m3 = rg.Point3d(m1); m3.Z += 0.01*self.__m_unitCoef
+            m1.X = m3.X = fromLeft
+            if self.__m_blnShowWindow :
+                arrMullionPoints = [Intersect([c1,c2,m1,m3]), Intersect([w1,w2,m1,m3]), Intersect([w3,w4,m1,m3],-1), Intersect([c3,c4,m1,m3],-1)]
+            else: arrMullionPoints = [Intersect([c1,c2,m1,m3]), Intersect([c3,c4,m1,m3],-1)]
+        else:
+            self.__m_warningData.append("Wrong mullion type" + strMullionType)
+            return        
         
-
         if self.__m_blnShowWindow :
-            #elif not self.__m_blnShowPane :#only punched window mullion type
+            #create intersenction segments from panel and window lines to find intermediate points    
             if (type(dblThickness) == ListType or type(dblCapThickness) == ListType):
                 if (type(dblThickness) == ListType and len(dblThickness) > 1) or (type(dblCapThickness) == ListType and len(dblCapThickness) > 1):
                     #3-piece mullions if curtain-wall with opening
-                    arrHorPoints = [[0, 0, 0], [self.__m_arrWindowPoints[0][0], 0, 0],[self.__m_arrWindowPoints[1][0], 0, 0], [self.__m_dblWidth, 0, 0]]  
-                    arrVertPoints = [[0, 0, 0], [0, 0, self.__m_arrWindowPoints[0][2]],[0, 0, self.__m_arrWindowPoints[2][2]], [0, 0, self.__m_dblHeight]]
+                    pass
                 else: #if one list item will be used for Window frame only    
                     bWindowFrame = True
             #if full window panel? (no pane object) also use window frame settings
@@ -1809,65 +2055,15 @@ class Panel:
                 if type(dblThickness) == ListType and len(dblThickness) > 1 : dblThickness = dblThickness[1]
                 if type(dblCapThickness) == ListType and len(dblCapThickness) > 1 : dblCapThickness = dblCapThickness[1]
                 bWindowFrame = True 
-
+        
             if bWindowFrame == True :
                 dblYOffset = -self.__m_dblWinGlassOffset + self.__m_dblWinGlassThickness + .004 * self.__m_unitCoef
-                arrHorPoints = [[self.__m_arrWindowPoints[0][0], 0, 0],[self.__m_arrWindowPoints[1][0], 0, 0]]
-                arrVertPoints = [[0, 0, self.__m_arrWindowPoints[0][2]],[0, 0, self.__m_arrWindowPoints[2][2]]]   
+                arrMullionPoints = [arrMullionPoints[1], arrMullionPoints[2]]
         
+        arrDeltaPoint = [0, dblYOffset,0]# Store the appropiate distance from 0 based on the mullion type/location 
         
-        #Mullion type specific settings
-        if strMullionType ==  "PanelBottom":
-           arrMullionPoints = arrHorPoints     #start from the base horizontal or vertical points depending if its hor or vert mullion 
-           arrDeltaPoint = [0, dblYOffset, 0]  # Store the appropiate distance from 0 based on the mullion type/location 
-        elif strMullionType ==  "WindowBottom":
-            arrMullionPoints = arrHorPoints
-            arrDeltaPoint = [0, dblYOffset, self.__m_arrWindowPoints[0][2]]
-        elif strMullionType ==  "WindowTop":
-            arrMullionPoints = arrHorPoints
-            arrDeltaPoint = [0, dblYOffset, self.__m_arrWindowPoints[2][2]]
-        elif strMullionType ==  "PanelTop":
-            arrMullionPoints = arrHorPoints
-            arrDeltaPoint = [0, dblYOffset, self.__m_dblHeight]
-            
-        elif strMullionType ==  "PanelLeft":
-            arrMullionPoints = arrVertPoints
-            arrDeltaPoint = [0, dblYOffset, 0]
-        elif strMullionType ==  "WindowLeft":
-            arrMullionPoints = arrVertPoints
-            arrDeltaPoint = [self.__m_arrWindowPoints[0][0], dblYOffset, 0]
-        elif strMullionType ==  "WindowRight":
-            arrMullionPoints = arrVertPoints
-            arrDeltaPoint =[self.__m_arrWindowPoints[1][0], dblYOffset, 0]
-        elif strMullionType ==  "PanelRight":
-            arrMullionPoints = arrVertPoints
-            arrDeltaPoint = [self.__m_dblWidth, dblYOffset, 0]
-            
-            #if Hor : format is Hor_fromBottom=number. Compile line to use value
-        elif "Hor_" in strMullionType :
-            arrMullionPoints = arrHorPoints
-            fromBottom=0
-            strData = strMullionType[4:len(strMullionType)]
-            codeObj= compile(strData,'<string>','single')
-            eval(codeObj)
-            arrDeltaPoint = [0, dblYOffset, fromBottom]
-            
-            #if Vert : format is Vert_fromLeft=number. Compile line to use value
-        elif "Vert_" in strMullionType :
-            arrMullionPoints = arrVertPoints
-            fromLeft=0
-            strData = strMullionType[5:len(strMullionType)]
-            codeObj= compile(strData,'<string>','single')
-            eval(codeObj)
-            arrDeltaPoint = [fromLeft, dblYOffset, 0]
-            
-        else:
-            self.__m_warningData.append("Wrong mullion type" + strMullionType)
-            return
-    
         arrXform = rs.XformTranslation(arrDeltaPoint) # create matrix from vector to add delta(distance) to base points in one line
         arrMullionPoints = rs.PointArrayTransform(arrMullionPoints, arrXform) # add delta(distance) to base mullions to get final 4 points locations
-        
         
         #Create 1 or 3 mullions using the obtained points sending them in pairs (end points of each mullion)
 
@@ -1875,17 +2071,12 @@ class Panel:
             
             if rs.PointCompare(arrMullionPoints[i], arrMullionPoints[i + 1]) :
                 continue #skip if points on same location
-            
             #detect if thickness is one value or three(varying thinkness along mullion)
             if type(dblThickness) is ListType and len(dblThickness)> i: mullThickness = dblThickness[i]
             else : mullThickness = dblThickness
             
             if mullThickness > 0 and self.GetDrawMode() <> "LADYBUG" : 
-                
                 arrMullions.append(self.DrawMember(arrMullionPoints[i], arrMullionPoints[i + 1], dblWidth, mullThickness))
-
-            #else:
-                #arrMullions.append(rs.AddPoint(self.__m_arrBoundingBox[0])) #just a point as placeholder at Panel origin
             
             if  dblCapWidth > 0.0 :
                 #detect if thickness is one value or three(varying thinkness along mullion)
@@ -1898,64 +2089,50 @@ class Panel:
                         arrCapMullionPoints = rs.PointArrayTransform(arrMullionPoints, arrXform) # new points location
                         arrMullions.append(self.DrawMember(arrCapMullionPoints[i], arrCapMullionPoints[i + 1], dblCapWidth, capThickness))
                         
-            #else:
-                #arrMullions.append(rs.AddPoint(self.__m_arrBoundingBox[0])) #just a point as placeholder at Panel origin
-        
         
         if arrMullions == [] : arrMullions = None       
         #return the array of mullions back to function call
-        return arrMullions
+        return arrMullions     
+        
+        
         
         
     #------------------------------------------------------------------------------------------------------------------------------------
     #------------------------------------------------------------------------------------------------------------------------------------
-    
-    #Member creation using start/end, width, thickness parameters
-    
+        
     def DrawMember(self, arrStartPoint, arrEndPoint, dblWidth, dblThickness, dblRotation=0, arrOffsetStart=None, arrOffsetEnd=None) :
-
+        
         if rs.PointCompare(arrStartPoint, arrEndPoint) : return #return if same points start,end
         
+        mullionAxis = rg.Vector3d(arrEndPoint-arrStartPoint)
+        vecCtr = (mullionAxis/mullionAxis.Length)*(dblWidth/2)
+        vecCtr.Rotate(math.radians(-90), rg.Vector3d.YAxis)
         
-        #To create 4 surface points based on 2 points a vertical or horizontal offset need to be defined
-        #depending on member type:horizontal or verical
-        if arrStartPoint[0] == arrEndPoint[0] :     #Is Vertical?
-            cornerPt1 = rg.Point3d(arrStartPoint[0]-dblWidth/2, arrStartPoint[1]+dblThickness, arrStartPoint[2])
-            cornerPt2 = rg.Point3d(cornerPt1[0], arrStartPoint[1], cornerPt1[2])
-            cornerPt3 = rg.Point3d(cornerPt2[0], cornerPt2[1], arrEndPoint[2])
-            cornerPt4 = rg.Point3d(cornerPt1[0], cornerPt1[1], cornerPt3[2])
-            
-            ptExtrusion = rg.Point3d(dblWidth,0,0)
-            vecRot = rg.Vector3d(0,0,1) #for rotation
-            
-        elif arrStartPoint[2] == arrEndPoint[2] :   #Is Horizontal?
-            cornerPt1 = rg.Point3d(arrStartPoint[0], arrStartPoint[1]+dblThickness, arrStartPoint[2]-dblWidth/2)
-            cornerPt2 = rg.Point3d(cornerPt1[0], arrStartPoint[1], cornerPt1[2])
-            cornerPt3 = rg.Point3d(arrEndPoint[0], cornerPt2[1], cornerPt2[2])
-            cornerPt4 = rg.Point3d(cornerPt3[0], cornerPt1[1], cornerPt3[2])
-            
-            ptExtrusion = rg.Point3d(0,0,dblWidth)
-            vecRot = rg.Vector3d(1,0,0) #for rotation
-        else:
-            return
+        leftStartPt = rg.Point3d(arrStartPoint); leftStartPt.Y += dblThickness
+        rightStartPt = arrStartPoint
+        leftEndPt = rg.Point3d(arrEndPoint); leftEndPt.Y += dblThickness 
+        rightEndPt = arrEndPoint
         
-        #apply offset values on outside points of object.
-        if arrOffsetStart : 
-            cornerPt2 = cornerPt2 + rg.Point3d(arrOffsetStart[0], arrOffsetStart[1], arrOffsetStart[2] )
-        if arrOffsetEnd :
-            cornerPt3 = cornerPt3 + rg.Point3d(arrOffsetEnd[0], arrOffsetEnd[1], arrOffsetEnd[2] )     
-        
-        rcTolerance = sc.doc.ModelAbsoluteTolerance
-        #create ocorner points for surface
-        brepMember = rg.Brep.CreateFromCornerPoints(cornerPt1 ,cornerPt2, cornerPt3, cornerPt4, rcTolerance)
-        brepMember = brepMember.Faces.Item[0].CreateExtrusion(rg.LineCurve(rg.Point3d(0,0,0), ptExtrusion), True)    
+        #offset buggy once 3d panels was added.
+        if arrOffsetStart:
+            rightStartPt += rg.Vector3d(arrOffsetStart[0], arrOffsetStart[1], arrOffsetStart[2])
+        if arrOffsetEnd:
+            rightEndPt += rg.Vector3d(arrOffsetEnd[0], arrOffsetEnd[1], arrOffsetEnd[2])
+            
+        curve1 = rg.Curve.CreateInterpolatedCurve([rightStartPt, leftStartPt, leftEndPt, rightEndPt, rightStartPt],1)
         
         if dblRotation <> 0 : 
-            ptCenter = rg.Point3d(arrStartPoint[0],arrStartPoint[1]+dblThickness/2,arrStartPoint[2])            
-            brepMember.Rotate(math.radians(dblRotation), vecRot, ptCenter)
+            ptCenter = rg.Point3d(arrStartPoint.X+dblWidth/4,arrStartPoint.Y+dblThickness/2,arrStartPoint.Z)  
+            curve1.Rotate(math.radians(dblRotation), mullionAxis, ptCenter)
+            curve1.Translate(curve1.PointAtStart-rightStartPt)
+        curve1.Translate(vecCtr)
+        extrusion = rg.Extrusion.Create(curve1, dblWidth, True)
+        brepMember = extrusion.ToBrep()   
+        
+        
+
             
         return brepMember
-        
         
     #----------------------------------------------------------------------------------------------------------------------
     #----------------------------------------------------------------------------------------------------------------------
@@ -1978,16 +2155,17 @@ class Panel:
     def DrawShadingType(self,  strShadingType, fromLeftBottomCorner, fromRightTop, width=.05*_UNIT_COEF, thickness=0.05*_UNIT_COEF, offset=0, spacing=.1*_UNIT_COEF, rotation=0, shiftEnds=[None,None]):
         
         if thickness <= 0 or width <= 0 : return
-        
+                
         #----Setting up parameters common to all shading types
         start = [0,0,0]; end = [0,0,0]
         start[1] = -offset-thickness; end[1] = -offset-thickness
         tmpFromLeftBottomCorner = copy.deepcopy(fromLeftBottomCorner)
         tmpFromRightTop = copy.deepcopy(fromRightTop)
+        
         #----Setting up parameters based on shading type
         #Single Shade options:
-        if strShadingType in ["HorizontalShade", "HorizontalWindowShade"]:  #---Single Vertical Shade
-            if strShadingType == "HorizontalWindowShade":
+        if strShadingType in ["HorizontalShade", "HorizontalWindowShade"]:  #---Single Horizontal Shade
+            if strShadingType == "HorizontalWindowShade": 
                 if self.__m_blnShowWindow : 
                     # - negative value defines distance from window head 
                     if tmpFromLeftBottomCorner[1] < 0 :  tmpFromLeftBottomCorner[1] = self.__GetPanelProperty("WindowHeight") + tmpFromLeftBottomCorner[1]
@@ -2002,12 +2180,11 @@ class Panel:
             end[2] = tmpFromLeftBottomCorner[1]
             if start[0] >= end[0] or start[0] < 0 or start[0] > self.GetWidth()*self.__m_dimRoundCoef or start[2] < 0 or start[2] > self.GetHeight()*self.__m_dimRoundCoef:
                 self.__m_warningData.append("Invalid "+ strShadingType + " data"); return None #check for wrong data
-            if  rotation <> 0 : #adjust start-end points of shade to offset rotation from center of sunshade to side closer to panel.
-                start[2] -= math.sin(math.radians(rotation))*thickness/2
-                end[2] -= math.sin(math.radians(rotation))*thickness/2
-                start[1] += thickness/2 - math.cos(math.radians(rotation))*thickness/2
-                end[1] += thickness/2 - math.cos(math.radians(rotation))*thickness/2
-            return [self.DrawMember(start, end, width, thickness, rotation, shiftEnds[0], shiftEnds[1])]
+            #remaping of points to adjust shade to conformed shape in Surface Panel Mode
+            if "Window" in strShadingType : cStart, cEnd = [self.__BaseToSurfaceWindowPoint(p) for p in [start, end]]
+            else: cStart, cEnd = [self.__BaseToSurfacePanelPoint(p) for p in [start, end]]
+            
+            return [self.DrawMember(cStart, cEnd, width, thickness, rotation, shiftEnds[0], shiftEnds[1])]
             
         elif strShadingType in ["VerticalShade", "VerticalWindowShade"]: #---Single Horizontal Shade
             if strShadingType == "VerticalWindowShade":
@@ -2025,12 +2202,10 @@ class Panel:
             end[2] = self.__GetPanelProperty("PanelHeight")-tmpFromRightTop
             if start[2] >= end[2] or start[0] < 0 or start[0] > self.GetWidth()*self.__m_dimRoundCoef or start[2] < 0 or start[2] > self.GetHeight()*self.__m_dimRoundCoef:
                 self.__m_warningData.append("Invalid "+ strShadingType + " data"); return None #check for wrong data
-            if  rotation <> 0 : #adjust start-end points of shade to offset rotation from center of sunshade to side closer to panel.
-                start[0] += math.sin(math.radians(rotation))*thickness/2
-                end[0] += math.sin(math.radians(rotation))*thickness/2
-                start[1] += thickness/2 - math.cos(math.radians(rotation))*thickness/2
-                end[1] += thickness/2 - math.cos(math.radians(rotation))*thickness/2
-            return [self.DrawMember(start, end, width, thickness, rotation, shiftEnds[0], shiftEnds[1])]
+            #remaping of points to adjust shade to conformed shape in Surface Panel Mode
+            if "Window" in strShadingType : cStart, cEnd = [self.__BaseToSurfaceWindowPoint(p) for p in [start, end]]
+            else: cStart, cEnd = [self.__BaseToSurfacePanelPoint(p) for p in [start, end]]
+            return [self.DrawMember(cStart, cEnd, width, thickness, rotation, shiftEnds[0], shiftEnds[1])]
             
         #Louver type options:
         elif strShadingType in ["HorizontalLouver", "HorizontalWindowLouver"] : #---VerticalLouvers
@@ -2049,13 +2224,12 @@ class Panel:
             arrLouvers = []
             #adjust start-end points of shade to offset rotation from center of sunshade to side closer to panel.
             offsetZ = 0; offsetY = 0
-            if  rotation <> 0 : 
-                offsetZ = math.sin(math.radians(rotation))*thickness/2
-                offsetY = thickness/2 - math.cos(math.radians(rotation))*thickness/2
-                start[1] += offsetY; end[1] += offsetY
             while valZ <= endZ :
                 start[2] = end[2] = valZ - offsetZ
-                arrLouvers.append(self.DrawMember(start, end, width, thickness, rotation, shiftEnds[0], shiftEnds[1]))
+                #remaping of points to adjust shade to conformed shape in Surface Panel Mode
+                if "Window" in strShadingType : cStart, cEnd = [self.__BaseToSurfaceWindowPoint(p) for p in [start, end]]
+                else: cStart, cEnd = [self.__BaseToSurfacePanelPoint(p) for p in [start, end]]
+                arrLouvers.append(self.DrawMember(cStart, cEnd, width, thickness, rotation, shiftEnds[0], shiftEnds[1]))
                 valZ += spacing
             return arrLouvers
             
@@ -2075,19 +2249,16 @@ class Panel:
             arrLouvers = []
             #adjust start-end points of shade to offset rotation from center of sunshade to side closer to panel.
             offsetX = 0; offsetY = 0
-            if  rotation <> 0 : 
-                offsetX = math.sin(math.radians(rotation))*thickness/2
-                offsetY = thickness/2 - math.cos(math.radians(rotation))*thickness/2
-                start[1] += offsetY; end[1] += offsetY
-            
             while valX <= endX :
                 start[0] = end[0] = valX+offsetX
-                arrLouvers.append(self.DrawMember(start, end, width, thickness, rotation, shiftEnds[0], shiftEnds[1]))
+                #remaping of points to adjust shade to conformed shape in Surface Panel Mode
+                if "Window" in strShadingType : cStart, cEnd = [self.__BaseToSurfaceWindowPoint(p) for p in [start, end]]
+                else: cStart, cEnd = [self.__BaseToSurfacePanelPoint(p) for p in [start, end]]
+                arrLouvers.append(self.DrawMember(cStart, cEnd, width, thickness, rotation, shiftEnds[0], shiftEnds[1]))
                 valX += spacing
             return arrLouvers
             
         else: self.__m_warningData.append("Incorrect louver type: " + strShadingType) ; return
-        
         
         
         
@@ -2099,7 +2270,21 @@ class Panel:
         if self.__m_CustomGeoBreps == None or self.__m_CustomGeoBreps == [] : return
         tolerance = sc.doc.ModelAbsoluteTolerance
         self.__m_CustomGeoDrawBreps = []
-  
+        
+        #prepare panel solid for trimming to panel shape
+        if self.__m_CG_trimToPanelSize:
+            cPSCornerPts = self.__GetCornerPoints()
+            cPSBBox = rg.BoundingBox(cPSCornerPts)
+            cp1, cp2, cp4, cp3 = cPSCornerPts
+            curvePanel = rg.Curve.CreateInterpolatedCurve([cp1, cp2, cp3, cp4, cp1],1)
+            curvePanel.Translate(0, self.__m_CG_vecPlacement.Y, 0)
+            extrusion = rg.Extrusion.Create(curvePanel, 2, True)
+            tmpBoxBrep = extrusion.ToBrep()
+            
+        if self.__m_CG_windowDepth and self.__m_blnShowWindow:   
+            wp1, wp2, wp3, wp4 = [self.__BaseToSurfaceWindowPoint(wp) for wp in self.__m_arrWindowPoints]
+            curveWindow = rg.Curve.CreateInterpolatedCurve([wp1, wp2, wp3, wp4, wp1],1)
+            
         for brep in self.__m_CustomGeoBreps:
             tmpCustomGeo = brep.DuplicateBrep()
             customGeoBBox = tmpCustomGeo.GetBoundingBox(True)
@@ -2112,14 +2297,8 @@ class Panel:
                 if round(customGeoMin.X, 3) < 0 or round(customGeoMax.X, 3) > self.GetWidth() or \
                     round(customGeoMin.Y, 3) < 0 or round(customGeoMax.Y, 3) > self.GetHeight():
                     #create substraction object and subract
-                    pt1 = rg.Point3d(0,-customGeoSize.Y*self.__m_CG_vecScaleFactor.Y+self.__m_CG_vecPlacement.Y-2,0)
-                    pt2 = rg.Point3d(self.GetWidth(), self.__m_CG_vecPlacement.Y+1, self.GetHeight())
-                    tmpBBox = rg.BoundingBox(pt1, pt2)
-                    tmpBoxBrep = rg.Brep.CreateFromBox(tmpBBox)
                     tmpBrepList = rg.Brep.CreateBooleanIntersection(tmpCustomGeo, tmpBoxBrep, tolerance)
-                    
                     if tmpBrepList == None : self.__m_warningData.append("Panel '"+self.GetName()+"': Panel sizing boolean Error - discarding custom geometry") ; return
-                    
                     for index in range(len(tmpBrepList)-1):
                         tmpBrepList[0].Append(tmpBrepList[index+1])
                     if tmpBrepList : tmpCustomGeo = tmpBrepList[0]
@@ -2127,26 +2306,18 @@ class Panel:
                 
             # if window exists and Window Void enabled subtract window from custom geometry
             if self.__m_CG_windowDepth and tmpCustomGeo and self.__m_blnShowWindow:
-                arrOpeningPoints = copy.deepcopy(self.__m_arrWindowPoints)
-    
-                #Avoid boolean error when subraction boxes align with panel edges
-                if round(self.__GetPanelProperty("WindowLeft"),3) == 0 : arrOpeningPoints[0][0] = arrOpeningPoints[3][0] = -.1 
-                if round(self.__GetPanelProperty("WindowRight"),3) == 0 : arrOpeningPoints[1][0] = arrOpeningPoints[2][0] = self.GetWidth()+.1 
-                if round(self.__GetPanelProperty("WindowBottom"),3) == 0 : arrOpeningPoints[0][2] = arrOpeningPoints[1][2] = -.1 
-                if round(self.__GetPanelProperty("WindowTop"),3) == 0 : arrOpeningPoints[2][2] = arrOpeningPoints[3][2] = self.GetHeight()+.1
-              
-                #create subraction object
                 voidDepth = 0
-                if self.__m_CG_windowDepth == "True" : voidDepth = -customGeoSize.Y * self.__m_CG_vecScaleFactor.Y + self.__m_CG_vecPlacement.Y
-                else : voidDepth = -self.__m_CG_windowDepth+self.__m_CG_vecPlacement.Y
-                pt1 = rg.Point3d(arrOpeningPoints[0][0], voidDepth - self.__m_dblWinGlassOffset, arrOpeningPoints[0][2])
-                pt2 = rg.Point3d(arrOpeningPoints[2][0], self.__m_CG_vecPlacement.Y-self.__m_dblWinGlassOffset, arrOpeningPoints[2][2])
-                tmpWinBox = rg.BoundingBox(pt1, pt2)
-    
+                if self.__m_CG_windowDepth == "True" : 
+                    voidDepth = -customGeoSize.Y * self.__m_CG_vecScaleFactor.Y + self.__m_CG_vecPlacement.Y
+                else : 
+                    voidDepth = -self.__m_CG_windowDepth+self.__m_CG_vecPlacement.Y
+                extrusion = rg.Extrusion.Create(curveWindow, -voidDepth+self.__m_dblWinGlassOffset, True)
+                tmpWinBoxBrep = extrusion.ToBrep()
+                tmpWinBox = tmpWinBoxBrep.GetBoundingBox(True)
                 #check if both window and custom geometry overlap before creating opening
                 tmpGeoBBox = tmpCustomGeo.GetBoundingBox(True)
                 if tmpGeoBBox.Min.X < tmpWinBox.Max.X and tmpGeoBBox.Min.Z < tmpWinBox.Max.Z: 
-                    tmpWinBoxBrep = rg.Brep.CreateFromBox(tmpWinBox)
+                    if tmpWinBox.Contains(tmpGeoBBox): continue
                     tmpBrepList = rg.Brep.CreateBooleanDifference(tmpCustomGeo, tmpWinBoxBrep, tolerance)
                     #unify pieces in one brep
                     if tmpBrepList <> None : 
@@ -2154,7 +2325,11 @@ class Panel:
                             tmpBrepList[0].Append(tmpBrepList[index+1])
                         if tmpBrepList : tmpCustomGeo = tmpBrepList[0] 
                     else : 
-                        self.__m_warningData.append("Panel '"+self.GetName()+"': Window Boolean error - discarding boolean")
+                        self.__m_warningData.append("Panel '"+self.GetName()+"': Window Boolean error - discarding boolean")                    
+                else :
+                    self.__m_warningData.append("Panel '"+self.GetName()+"': Window Boolean error - discarding boolean")
+                
+                #Avoid boolean error when subraction boxes align with panel edges
                 
             if tmpCustomGeo : self.__m_CustomGeoDrawBreps.append(tmpCustomGeo)
         
@@ -2250,28 +2425,34 @@ class Panel:
             if  type(self.__m_arrWallObjects) == ListType and not type(self.__m_arrWallObjects[0]) == IntType and rs.IsObject(self.__m_arrWallObjects[0]): 
                 rs.DeleteObjects(self.__m_arrWallObjects)
             if  self.__m_blnShowWall and len(self.__m_arrWallBreps) and self.__m_arrWallBreps <> [0]: 
-                if not rs.IsLayer(parentLayerName+"::_P_Wall") : rs.AddLayer("_P_Wall", parent=parentLayerName)
+                if not rs.IsLayer(parentLayerName+"::_P_Wall") : rs.AddLayer(parentLayerName+"::_P_Wall")
                 rs.CurrentLayer(parentLayerName+"::_P_Wall")
                 self.__m_arrWallObjects = []
-                for brep in self.__m_arrWallBreps : self.__m_arrWallObjects += [sc.doc.Objects.AddBrep(brep)]
+                for brep in self.__m_arrWallBreps :
+                    if not brep.IsValid : continue
+                    self.__m_arrWallObjects += [sc.doc.Objects.AddBrep(brep)]
             
         if objectType == "Pane" or objectType == None:
             if  type(self.__m_arrPaneObjects) == ListType and not type(self.__m_arrPaneObjects[0]) == IntType \
                 and rs.IsObject(self.__m_arrPaneObjects[0]): rs.DeleteObjects(self.__m_arrPaneObjects)
             if  self.__m_blnShowPane and len(self.__m_arrPaneBreps) and self.__m_arrPaneBreps <> [0]:
-                if not rs.IsLayer(parentLayerName+"::"+self.__m_strPaneName) : rs.AddLayer(self.__m_strPaneName, parent=parentLayerName)
+                if not rs.IsLayer(parentLayerName+"::"+self.__m_strPaneName) : rs.AddLayer(parentLayerName+"::"+self.__m_strPaneName)
                 rs.CurrentLayer(parentLayerName+"::"+self.__m_strPaneName)
                 self.__m_arrPaneObjects = []
-                for brep in self.__m_arrPaneBreps : self.__m_arrPaneObjects += [sc.doc.Objects.AddBrep(brep)]
+                for brep in self.__m_arrPaneBreps : 
+                    if not brep.IsValid : continue
+                    self.__m_arrPaneObjects += [sc.doc.Objects.AddBrep(brep)]
                 
         if objectType == "Window" or objectType == None:
             if type(self.__m_arrWindowObjects) == ListType and not type(self.__m_arrWindowObjects[0]) == IntType \
                 and rs.IsObject(self.__m_arrWindowObjects[0]) : rs.DeleteObjects(self.__m_arrWindowObjects)
             if  self.__m_blnShowWindow and self.__m_dblWinGlassThickness and self.__m_arrWindowBreps <> [0]:
-                if not rs.IsLayer(parentLayerName+"::_P_Glass") : rs.AddLayer("_P_Glass", parent=parentLayerName)
+                if not rs.IsLayer(parentLayerName+"::_P_Glass") : rs.AddLayer(parentLayerName+"::_P_Glass")
                 rs.CurrentLayer(parentLayerName+"::_P_Glass")
                 self.__m_arrWindowObjects = []
-                for brep in self.__m_arrWindowBreps : self.__m_arrWindowObjects += [sc.doc.Objects.AddBrep(brep)]
+                for brep in self.__m_arrWindowBreps : 
+                    if not brep.IsValid : continue
+                    self.__m_arrWindowObjects += [sc.doc.Objects.AddBrep(brep)]
                 
         if objectType == "Mullions" or objectType == None:
             #Horizontal mullions
@@ -2279,24 +2460,28 @@ class Panel:
                 and rs.IsObject(self.__m_arrMullionHorObjects[0]) : rs.DeleteObjects(self.__m_arrMullionHorObjects)
             if len(self.__m_arrMullionHorBreps) and self.__m_arrMullionHorBreps[0]:
                 self.__m_arrMullionHorObjects = []
-                if not rs.IsLayer(parentLayerName+"::_P_Mullions") : rs.AddLayer("_P_Mullions", parent=parentLayerName)
+                if not rs.IsLayer(parentLayerName+"::_P_Mullions") : rs.AddLayer(parentLayerName+"::_P_Mullions") 
                 rs.CurrentLayer(parentLayerName+"::_P_Mullions")
                 for i in range(self.__GetPanelProperty("MullionHorNum")):
                     arrMullions = self.__GetPanelPropertyArray("MullionHorObjArray", i)
                     if arrMullions and arrMullions[0] and not type(arrMullions[0]) == IntType:
-                        for brep in arrMullions : self.__m_arrMullionHorObjects += [sc.doc.Objects.AddBrep(brep)]
+                        for brep in arrMullions : 
+                            if not brep.IsValid : continue
+                            self.__m_arrMullionHorObjects += [sc.doc.Objects.AddBrep(brep)]
 
             #Delete Verticals mullions
             if type(self.__m_arrMullionVertObjects) == ListType and len(self.__m_arrMullionVertObjects) and not type(self.__m_arrMullionVertObjects[0]) == IntType \
                 and rs.IsObject(self.__m_arrMullionVertObjects[0]) : rs.DeleteObjects(self.__m_arrMullionVertObjects)
             if len(self.__m_arrMullionVertBreps) and self.__m_arrMullionVertBreps[0]:
                 self.__m_arrMullionVertObjects = []
-                if not rs.IsLayer(parentLayerName+"::_P_Mullions") : rs.AddLayer("_P_Mullions", parent=parentLayerName)
+                if not rs.IsLayer(parentLayerName+"::_P_Mullions") : rs.AddLayer(parentLayerName+"::_P_Mullions") 
                 rs.CurrentLayer(parentLayerName+"::_P_Mullions")
                 for i in range(self.__GetPanelProperty("MullionVertNum")):
                     arrMullions = self.__GetPanelPropertyArray("MullionVertObjArray", i)
                     if arrMullions and arrMullions[0] and not type(arrMullions[0]) == IntType:
-                        for brep in arrMullions : self.__m_arrMullionVertObjects += [sc.doc.Objects.AddBrep(brep)]
+                        for brep in arrMullions : 
+                            if not brep.IsValid : continue
+                            self.__m_arrMullionVertObjects += [sc.doc.Objects.AddBrep(brep)]
                 
         if objectType == "Shading" or objectType == None:
             #Detlete Shading
@@ -2305,9 +2490,11 @@ class Panel:
             if  self.__m_blnShowShading and self.__m_arrShadingBreps and self.__m_arrShadingBreps <> [0]:
                 self.__m_arrShadingObjects = []; i=0
                 for arrShading in self.__m_arrShadingBreps :
-                    if not rs.IsLayer(parentLayerName+"::"+self.__m_arrShadingUserData[8][i]) : rs.AddLayer(self.__m_arrShadingUserData[8][i], parent=parentLayerName)
+                    if not rs.IsLayer(parentLayerName+"::"+self.__m_arrShadingUserData[8][i]) : rs.AddLayer(parentLayerName+"::"+self.__m_arrShadingUserData[8][i]) 
                     rs.CurrentLayer(parentLayerName+"::"+self.__m_arrShadingUserData[8][i])
-                    for brep in arrShading : self.__m_arrShadingObjects += [sc.doc.Objects.AddBrep(brep)]
+                    for brep in arrShading : 
+                        if not brep.IsValid : continue
+                        self.__m_arrShadingObjects += [sc.doc.Objects.AddBrep(brep)]
                     i += 1
                     
         if objectType == "CustomGeometry" or objectType == None:
@@ -2316,9 +2503,10 @@ class Panel:
             self.__m_CustomGeoObjects = []
             if  self.__m_blnShowCustomGeo and self.__m_CustomGeoDrawBreps <> [] :
                 for brep in self.__m_CustomGeoDrawBreps:
+                    if not brep.IsValid : continue
                     CGLayerName = brep.GetUserString("Layer")
-                    if CGLayerName == None or CGLayerName == "": CGLayerName = "CustomGeo"
-                    if not rs.IsLayer(parentLayerName+"::_P_"+CGLayerName) : rs.AddLayer("_P_"+CGLayerName, parent=parentLayerName)
+                    if CGLayerName == None or CGLayerName == "" : CGLayerName = "CustomGeo"
+                    if not rs.IsLayer(parentLayerName+"::_P_"+CGLayerName) : rs.AddLayer(parentLayerName+"::_P_"+CGLayerName)
                     rs.CurrentLayer(parentLayerName+"::_P_"+CGLayerName)
                     self.__m_CustomGeoObjects.append(sc.doc.Objects.AddBrep(brep))
             
@@ -2335,6 +2523,7 @@ class Skin:
     
     __m_skinGenName = "" # Name id (avoids overlapping block names between skin instances
     __m_GeneratePanelsOnly = False
+    __m_surfaceAsPanels = False #If True, surfaces will not be subdivided and each surface will be used to define each panel area.
     
     __m_dblOffsetLevel = 0  #Offset in elevation from path to be considered bottom of panel. Any value > 0 creates custom panel. 
     __m_dblOffsetPath = 0 #Offset x distance of first panel at segments.Use list for different dimensions at each segment
@@ -2346,7 +2535,8 @@ class Skin:
     __m_dblFloorToFloor = 4 * _UNIT_COEF #Floor height
     __m_dblMinPanelWidth = 0 #if surface cell width is below this number it will be ignored and panel won't be created.
     __m_dblMinPanelHeight = 0 #if surface cell height is below this number will be ignored and panel won't be created.
-        
+    __m_dblMinPanelArea = 0 #if surface cell area is below this number will be ignored and panel won't be created.
+    __m_panelProfileTolerance = 0  #Maximum tolerance allowed to match current required panel properties with panel database.
     
     __m_flatMode = False  #Low geoemtry mode
     __m_drawMode = ""   #"LADYBUG", "DEFAULT" 
@@ -2362,6 +2552,8 @@ class Skin:
     __m_DesignFunctions = [] 
     
     __m_arrBayMatrix = [] #surface matrix of bay points
+    __m_arrBayCellSides = [] #surface matrix of bay sides count
+    __m_arrBayPtData = {}
     __m_intRows = 0 #number of rows on surface
     __m_intColumns = 0 #number of columns on surface
     __m_intCurrCellColumn = 0
@@ -2377,35 +2569,44 @@ class Skin:
     
     
     
-    def __init__(self, skinName = "DEFAULT", objSkinSurface=None, panelBays=None, designFunctions=None):
+    def __init__(self, skinName = "DEFAULT", objSkinSurface=None, panelPoints=None, panelBays=None, designFunctions=None):
         
-        #Skin generator paramters
+        #Skin generator parameters
         self.__m_skinGenName = skinName 
         
-        #create rc geometry if it's a document object and extract user surface paramters
-        geo = None; objData = None        
-        if str(type(objSkinSurface)) == "<type 'Guid'>" :
-            if  not rs.IsObject(objSkinSurface) : return False #Abort skin creation if object is not valid
-            objData = rs.ObjectName(objSkinSurface) #extract data if any
-            self.__m_objSkinSurface = Rhino.DocObjects.ObjRef(objSkinSurface).Brep()
+        if objSkinSurface: 
+            #create rc geometry if it's a document object and extract user surface parameters
+            geo = None; objData = None        
+            if str(type(objSkinSurface)) == "<type 'Guid'>" :
+                if  not rs.IsObject(objSkinSurface) : return False #Abort skin creation if object is not valid
+                objData = rs.ObjectName(objSkinSurface) #extract data if any
+                self.__m_objSkinSurface = Rhino.DocObjects.ObjRef(objSkinSurface).Brep()
+                
+            elif type(objSkinSurface) ==  Rhino.Geometry.Brep :
+                self.__m_objSkinSurface = objSkinSurface
+                objData = objSkinSurface.GetUserString('Data')
+                
+            else: return False #Abort skin creation if object is not valid
             
-        elif type(objSkinSurface) ==  Rhino.Geometry.Brep :
-            self.__m_objSkinSurface = objSkinSurface
-            objData = objSkinSurface.GetUserString('Data')
+            if  self.__m_objSkinSurface == None : return False #Abort skin creation if object is not valid
             
-        else: return False #Abort skin creation if object is not valid
+            #parse user surface-specific parameters (stored on brep user string or object name)
+            if  objData : self.__m_userData = list(objData.rsplit("/"))  
+            
+            self.__m_surfCurves = self.ExtractEdges(self.__m_objSkinSurface)
+            
         
-        if  self.__m_objSkinSurface == None : return False #Abort skin creation if object is not valid
-        
-        #parse user surface-specific parameters (stored on brep user string or object name)
-        if  objData : self.__m_userData = list(objData.rsplit("/"))  
-
-
-        self.__m_surfCurves = self.ExtractEdges(self.__m_objSkinSurface)
+        elif panelPoints: #if panel points are provided instead of a surface
+         
+            self.__m_arrBayMatrix, self.__m_arrBayCellSides, self.__m_arrBayPtData = panelPoints
+            self.__m_intRows = len(self.__m_arrBayMatrix)
+            self.__m_surfaceAsPanels = True
+        else: return False # abort skin creation if no required data avialable
         
         self.__m_panelBays = panelBays
         self.__m_DesignFunctions = designFunctions
         self.__m_GeneratePanelsOnly = False
+        
         
         self.__m_dblOffsetLevel = 0
         self.__m_dblOffsetPath = 0
@@ -2416,6 +2617,7 @@ class Skin:
         self.__m_dblFloorToFloor = panelBays[0][0].GetPanelProperty("PanelHeight")
         self.__m_dblMinPanelWidth = .1 * _UNIT_COEF
         self.__m_dblMinPanelHeight = .1 * _UNIT_COEF
+        self.__m_dblMinPanelArea = .01* _UNIT_COEF
         
         self.__m_flatMode = False
         self.__m_drawMode = "DEFAULT" 
@@ -2424,8 +2626,9 @@ class Skin:
         self.__m_bayList = None 
       
         #Internal members        
-        self.__m_arrBayMatrix = [] 
-        self.__m_intRows = 0  
+        if not self.__m_surfaceAsPanels : 
+            self.__m_arrBayMatrix = []
+            self.__m_intRows = 0  
         self.__m_intColumns = 0
         self.__m_intCurrCellColumn = 0
         self.__m_intCurrCellRow = 0
@@ -2524,14 +2727,14 @@ class Skin:
     def SetProperty(self, strProperty, value):
     
         if strProperty in ["SKIN_NAME", "OFFSET_LEVEL", "OFFSET_PATH", "SKIN_WRAP", "RESET_BAY_AT_POINTS", \
-            "FLAT_MODE", "DRAW_MODE", "BAY_LIST", "MIN_PANEL_WIDTH", "MIN_PANEL_HEIGHT", "RANDOM_OBJECT", \
-            "FLOOR_HEIGHT", "GENERATE_PANELS_ONLY"] :
+            "FLAT_MODE", "DRAW_MODE", "BAY_LIST", \
+            "MIN_PANEL_WIDTH", "MIN_PANEL_HEIGHT", "MIN_PANEL_AREA", "PANEL_PROFILE_TOLERANCE",\
+            "RANDOM_OBJECT", \
+            "FLOOR_HEIGHT", "GENERATE_PANELS_ONLY", "SURFACES_AS_PANELS", "WARNING_DATA"] :
             self.__SetProperty(strProperty, value)
         else:
             "Skin Parameter "+ strProperty + " is not valid"
-        #elif strProperty == "SKIN_SURFACE" : self.__m_objSkinSurface = value
-        #elif strProperty == "PANEL_BAY_LIST" : self.__m_panelBays = value
-        #elif strProperty == "DESIGN_FUNCTIONS" : self.__m_DesignFunctions = value
+
         
     def __SetProperty(self, strProperty, value):
     
@@ -2544,17 +2747,20 @@ class Skin:
         elif strProperty == "DRAW_MODE" : self.__m_drawMode = value
         elif strProperty == "BAY_LIST" : self.__m_bayList = value
         elif strProperty == "MIN_PANEL_WIDTH" : self.__m_dblMinPanelWidth = value
-        elif strProperty == "MIN_PANEL_HEIGHT" : self.__m_dblMinPanelHeight = value        
+        elif strProperty == "MIN_PANEL_HEIGHT" : self.__m_dblMinPanelHeight = value
+        elif strProperty == "MIN_PANEL_AREA" : self.__m_dblMinPanelArea = value
+        elif strProperty == "PANEL_PROFILE_TOLERANCE" : self.__m_panelProfileTolerance = value; 
         elif strProperty == "RANDOM_OBJECT" : self.__m_objRandom = value
         elif strProperty == "FLOOR_HEIGHT" : 
             if value > 0 : self.__m_dblFloorToFloor = value
         elif strProperty == "GENERATE_PANELS_ONLY" : self.__m_GeneratePanelsOnly = value   
-        
+        elif strProperty == "SURFACES_AS_PANELS" : self.__m_surfaceAsPanels = value   
         elif strProperty == "SKIN_SURFACE" : self.__m_objSkinSurface = value
         elif strProperty == "PANEL_BAY_LIST" : self.__m_panelBays = value
         elif strProperty == "DESIGN_FUNCTIONS" : self.__m_DesignFunctions = value
         elif strProperty == "PANEL_DATA" : self.__m_PanelData = value
         elif strProperty == "BAY_DATA" : self.__m_BayData = value
+        elif strProperty == "WARNING_DATA" : self.__m_warningData.append(value)
         
         
     def GetProperty(self, strProperty):
@@ -2562,6 +2768,7 @@ class Skin:
         #if strProperty == "SKIN_SURFACE" : return self.__m_objSkinSurface
         if strProperty == "SKIN_NAME" : return self.__m_skinGenName
         elif strProperty == "SKIN_SURFACE_TYPE" : return str(type(self.__m_objSkinSurface))
+        elif strProperty == "SURFACES_AS_PANELS" : return self.__m_surfaceAsPanels   
         elif strProperty == "SKIN_CELL_ROWS" : return self.__m_intRows
         elif strProperty == "SKIN_CELL_COLUMNS" : return self.__m_intColumns
         elif strProperty == "SKIN_CURRENT_CELL_COLUMN" : return self.__m_intCurrCellColumn
@@ -2582,18 +2789,79 @@ class Skin:
         #TYPE 1 - Cell properties
         
         try:
-            bayCornerPts = [self.__m_arrBayMatrix[intRow][intColumn], self.__m_arrBayMatrix[intRow][intColumn + 1],\
-                self.__m_arrBayMatrix[intRow + 1][intColumn], self.__m_arrBayMatrix[intRow + 1][intColumn + 1]]    
+            bayCornerPts = self.__m_arrBayMatrix[intRow][intColumn]
+            if 'FITTED' in strProperty : 
+                fittedRectangle = self.GetCellFittedRectange(bayCornerPts)
         except:
+            raise
             self.__m_warningData.append("GetCellPreoperty: Invalid row/column cell data") 
             return None
         
         #Properties
-        if strProperty == "CELL_CORNER_POINTS": return bayCornerPts
+        if strProperty == "CELL_CORNER_POINTS": return copy.deepcopy(bayCornerPts)
+        if strProperty == "CELL_CORNER_POINTS_IN_PANEL_SPACE": 
+            cellPts = copy.deepcopy(bayCornerPts); 
+            return self.GetPointsInPanelSpace(cellPts, cellPts)
         if strProperty == "CELL_PLANE" or strProperty == "PANEL_PLANE": 
             return Rhino.Geometry.Plane(bayCornerPts[0], bayCornerPts[1], bayCornerPts[2])
         if strProperty == "CELL_NORMAL_VECTOR" or strProperty == "PANEL_NORMAL_VECTOR": 
             return  Rhino.Geometry.Plane(bayCornerPts[0], bayCornerPts[1], bayCornerPts[2]).Normal
+            
+        if strProperty in ["CELL_SIDES", "CELL_SHARED_SIDE1_CELLS", "CELL_SHARED_SIDE2_CELLS", "CELL_SHARED_SIDE3_CELLS",\
+            "CELL_SHARED_SIDE4_CELLS", "CELL_SHARED_ALLSIDES_CELLS", "CELL_POINT1_NORMAL", "CELL_POINT2_NORMAL", \
+            "CELL_POINT3_NORMAL", "CELL_POINT4_NORMAL", "CELL_SHARED_POINT1_CELLS", "CELL_SHARED_POINT2_CELLS", \
+            "CELL_SHARED_POINT3_CELLS", "CELL_SHARED_POINT4_CELLS"]:
+            if self.GetProperty("SURFACES_AS_PANELS") == False:
+                print ">>>>"+ strProperty +": Call is invalid when SURFACE_AS_PANELS is set to False"
+                return None            
+        if strProperty == "CELL_SIDES": 
+            return  self.__m_arrBayCellSides[intRow][intColumn]
+        if strProperty == "CELL_SHARED_SIDE1_CELLS":
+            return self.GetCellsWithPts([bayCornerPts[0], bayCornerPts[1]]) 
+        if strProperty == "CELL_SHARED_SIDE2_CELLS":
+            return self.GetCellsWithPts([bayCornerPts[1], bayCornerPts[3]]) 
+        if strProperty == "CELL_SHARED_SIDE3_CELLS":
+            return self.GetCellsWithPts([bayCornerPts[3], bayCornerPts[2]]) 
+        if strProperty == "CELL_SHARED_SIDE4_CELLS":
+            return self.GetCellsWithPts([bayCornerPts[2], bayCornerPts[0]]) 
+        if strProperty == "CELL_SHARED_ALLSIDES_CELLS":
+            return self.GetCellsWithPts([bayCornerPts[0], bayCornerPts[1], bayCornerPts[3], bayCornerPts[2]]) 
+            
+        if strProperty == "CELL_SHARED_POINT1_CELLS":
+            return self.GetCellsWithPts([bayCornerPts[0]]) 
+        if strProperty == "CELL_SHARED_POINT2_CELLS":
+            return self.GetCellsWithPts([bayCornerPts[1]]) 
+        if strProperty == "CELL_SHARED_POINT3_CELLS":
+            if self.__m_arrBayCellSides[intRow][intColumn] == 3: 
+                return self.GetCellPointNormal(bayCornerPts[3])
+            return self.GetCellsWithPts([bayCornerPts[2]]) 
+        if strProperty == "CELL_SHARED_POINT4_CELLS":
+            if self.__m_arrBayCellSides[intRow][intColumn] == 3:
+                return None             
+            return self.GetCellsWithPts([bayCornerPts[3]])   
+            
+        if strProperty == "CELL_POINT1_NORMAL":
+            return self.GetCellPointNormal(bayCornerPts[0]) 
+        if strProperty == "CELL_POINT2_NORMAL":
+            return self.GetCellPointNormal(bayCornerPts[1]) 
+        if strProperty == "CELL_POINT3_NORMAL":
+            if self.__m_arrBayCellSides[intRow][intColumn] == 3: 
+                return self.GetCellPointNormal(bayCornerPts[3])
+            return self.GetCellPointNormal(bayCornerPts[2]) 
+        if strProperty == "CELL_POINT4_NORMAL":
+            if self.__m_arrBayCellSides[intRow][intColumn] == 3:
+                return None 
+                
+            return self.GetCellPointNormal(bayCornerPts[3])
+        if strProperty == "CELL_FITTED_RECTANGLE":
+            return fittedRectangle
+        if strProperty == "CELL_FITTED_REC_OFFSETS":
+            return self.GetCellFittedRecOffsets(fittedRectangle, bayCornerPts)            
+        if strProperty == "CELL_FITTED_REC_HEIGHT":
+            return fittedRectangle.Height
+        if strProperty == "CELL_FITTED_REC_WIDTH":
+            return fittedRectangle.Width            
+             
 
         #TYPE 2 - Cell Bay assigment properties
         #Bay ID assignement
@@ -2632,30 +2900,30 @@ class Skin:
         
         #Properties
         if strProperty == "PANEL_CORNER_POINTS":
-            if panelCornerPts: return panelCornerPts
+            if panelCornerPts: return copy.deepcopy(panelCornerPts)
             else: self.__m_warningData.append("GetCellProperty: invalid panel index in bay"); return None
         
         if strProperty == "PANEL_NAME":
-            if cellPtsAssigned and cellNamesAssigned :
+            try:
                 panelIndex = cellPtsAssigned.index(panelCornerPts)
                 return cellNamesAssigned[panelIndex]
-            else: 
+            except: 
                 self.__m_warningData.append("GetCellProperty: cell name data not found")
                 return None
                 
         if strProperty == "PANEL_CELL_ID":
-            if  cellPtsAssigned : return cellPtsAssigned.index(panelCornerPts)
-            else:
+            try : return cellPtsAssigned.index(panelCornerPts)
+            except:
                 self.__m_warningData.append("GetCellProperty: cell id data not found")
                 return None
                 
         if strProperty == "PANEL_INSTANCE":
-            if  cellNamesAssigned and cellPtsAssigned and panelNamesCreated:
+            try :
                 cellIndex = cellPtsAssigned.index(panelCornerPts)
                 name = cellNamesAssigned[cellIndex]
                 panelIndex = panelNamesCreated.index(name)
                 return panelsCreated[panelIndex]
-            else: 
+            except: 
                 self.__m_warningData.append("GetCellProperty: panel instance data not found")
                 return None
                 
@@ -2672,7 +2940,169 @@ class Skin:
                 
         self.__m_warningData.append("GetCellProperty: Invalid property: "+ strProperty)
         
+    #--------------------------------------------------------------------------------
+    #
+    #--------------------------------------------------------------------------------         
+    def GetPointsInPanelSpace(self, points, panelPts):
+        rc = Rhino
         
+        if len(panelPts) <> 4 :return None
+        p1, p2, p3, p4 = panelPts
+        
+        panelPlane = rc.Geometry.Plane(p1, p2, p3) 
+        co = rc.Geometry.Point3d(0,0,0); cx = rc.Geometry.Point3d(1,0,0); cy = rc.Geometry.Point3d(0,0,1)
+        originPlane = rc.Geometry.Plane(co, cx, cy)
+        xRot = rc.Geometry.Transform.PlaneToPlane(panelPlane, originPlane)
+        xPoints = copy.deepcopy(points)
+        res = [pt.Transform(xRot) for pt in xPoints]
+        return xPoints 
+        
+        #curve = rc.Geometry.Curve.CreateInterpolatedCurve(points,1)
+        #curve.Transform(xRot)
+        #crv = curve.TryGetPolyline()[1]
+        #xPoints = [rc.Geometry.Point3d(x,y,z) for x,y,z in zip(crv.X, crv.Y, crv.Z)]
+        
+        
+        
+    #--------------------------------------------------------------------------------
+    #
+    #--------------------------------------------------------------------------------        
+    def GetCellsWithPts(self, pointList):
+        
+        flatPts = copy.deepcopy(self.__m_arrBayPtData['flatPts'])
+        flatPtLocs = copy.deepcopy(self.__m_arrBayPtData['flatPtLoc'])
+        matchingPtsLocs = []; matchingKeys = []
+        for ptNum, pt in enumerate(pointList):
+            matchingPtsLocs.append([])
+            while True:
+                try: 
+                    matchIndex = flatPts.index(pt)
+                    locPair = [flatPtLocs[matchIndex][0], flatPtLocs[matchIndex][1]]
+                    matchingPtsLocs[ptNum].append(locPair)
+                    if locPair not in matchingKeys : matchingKeys.append(locPair)
+                    flatPts[matchIndex] = None
+                except:
+                    break
+                    
+        byPoint = [[ptIndex if matchingPtList.count(match) else None for ptIndex,matchingPtList in enumerate(matchingPtsLocs)]  for match in matchingKeys]
+        dictMatches = [{"cellLoc": entry[0], "matchingPtIndex":entry[1]} for entry in zip(matchingKeys, byPoint)]
+                
+        return dictMatches
+    #--------------------------------------------------------------------------------
+    #
+    #--------------------------------------------------------------------------------
+    
+    def GetCellPointNormal(self, cellPt):
+        
+        try:
+            index = self.__m_arrBayPtData['ptKeys'].index(cellPt)
+            return copy.deepcopy(self.__m_arrBayPtData['normalKeys'][index])
+        except:
+            return None
+            
+    
+    
+    #--------------------------------------------------------------------------------
+    #
+    #--------------------------------------------------------------------------------    
+    def GetCellFittedRectange(self, cellPts):
+        
+        
+        rc = Rhino
+        def RectangelMethod(cellPts):
+            #Get cell Bounding Box
+            p1,p2,p3,p4 = copy.deepcopy(cellPts)
+            plane = rc.Geometry.Plane(p1,p2,p3)
+            bbox = rc.Geometry.Box(plane, cellPts)
+            bbox.Z = rc.Geometry.Interval(0,0.001 * _UNIT_COEF)
+            boxPts = bbox.GetCorners()[0:4]
+            
+            #remap to Panel Coordinates
+            ptsPlane = []
+            xForm = rc.Geometry.Transform.PlaneToPlane(plane, rc.Geometry.Plane.WorldXY)
+            for pt in list(boxPts)+ [p1,p2,p4,p3]:
+                pt.Transform(xForm)
+                ptsPlane.append(copy.deepcopy(pt))
+            ptsSrf = ptsPlane[4:8]
+            ptsBox = ptsPlane[0:4]
+            
+            #define Box points X locations
+            ptsBox.sort(cmp=lambda x,y: cmp(x.X, y.X))
+            ptsBoxLeft =ptsBox[0:2]; ptsBoxRight = ptsBox[2:4]
+            ptsSrf.sort(cmp=lambda x,y: cmp(x.X, y.X))
+            ptsSrfLeft = ptsSrf[0:2]; ptsSrfRight = ptsSrf[2:4]
+            for pt in ptsBoxLeft: pt.X = ptsSrfLeft[1].X
+            for pt in ptsBoxRight: pt.X = ptsSrfRight[0].X
+            
+            #define Box points Y locations
+            ptsBox.sort(cmp=lambda x,y: cmp(x.Y, y.Y))
+            ptsBoxBottom =ptsBox[0:2]; ptsBoxTop = ptsBox[2:4]
+            ptsSrf.sort(cmp=lambda x,y: cmp(x.Y, y.Y))
+            ptsSrfBottom = ptsSrf[0:2]; ptsSrfTop = ptsSrf[2:4]
+            for pt in ptsBoxBottom: pt.Y = ptsSrfBottom[1].Y
+            for pt in ptsBoxTop: pt.Y = ptsSrfTop[0].Y
+            
+            #create Rectangle
+            bbox = rc.Geometry.Box(rc.Geometry.Plane.WorldXY, ptsBox)
+            p1,p2,p3,p4 = bbox.GetCorners()[0:4]
+            rectangle = rc.Geometry.Rectangle3d(rc.Geometry.Plane.WorldXY, p1, p3)
+
+            #Align rect to World Coordinates     
+            xForm = rc.Geometry.Transform.PlaneToPlane(rc.Geometry.Plane.WorldXY, plane)
+            
+            rectangle.Transform(xForm)
+            return rectangle
+        
+        #For almost traingular shapes(not that useful)
+        def findNewPts(pts):
+            
+            ptDists =[]; ptIndex = []
+            for i, pt1 in enumerate(pts):
+                for pt2 in pts:
+                    if pt1 == pt2: continue
+                    d = pt1.DistanceTo(pt2)
+                    ptDists.append(d)
+                    ptIndex.append(i)
+            
+            A =  ptIndex[ptDists.index(min(ptDists))]
+            ptDists[ptDists.index(min(ptDists))] = max(ptDists)
+            B = ptIndex[ptDists.index(min(ptDists))]
+        
+            if A == 0 and B == 3 :
+                A2 = 1; B2 =2
+            else:
+                A2 = (A-1 if A >0  else 3)
+                B2 = (B+1 if B < 3 else 0)
+            ptA = pts[A]; ptA2 = pts[A2]
+            ptB = pts[B]; ptB2 = pts[B2]
+            ptA.Interpolate(ptA, ptA2,0.5)
+            ptB.Interpolate(ptB, ptB2,0.5)
+            return pts
+            
+        r1 = RectangelMethod(cellPts)
+    
+        #r2 = RectangelMethod(findNewPts(copy.deepcopy(cellPts)))
+        #return (r1 if r1.Area > r2.Area else r2)
+        return r1            
+    #--------------------------------------------------------------------------------
+    #
+    #--------------------------------------------------------------------------------        
+    def GetCellFittedRecOffsets(self, fittedRec, cornerPts):
+        
+        recPoints = [fittedRec.Corner(0), fittedRec.Corner(1), fittedRec.Corner(3), fittedRec.Corner(2)] 
+        cornerPts = copy.deepcopy(cornerPts)
+        #remap to Panel Coordinates
+        plane = rg.Plane(recPoints[0], recPoints[1], recPoints[2])
+        xForm = rg.Transform.PlaneToPlane(plane, rg.Plane.WorldZX)
+        
+        results = [pt.Transform(xForm) for pt in recPoints]
+        results = [pt.Transform(xForm) for pt in cornerPts]
+          
+        recPoints = [rg.Point3d(pt.Z, pt.Y, pt.X) for pt in recPoints]
+        cornerPts = [rg.Point3d(pt.Z, pt.Y, pt.X) for pt in cornerPts]        
+        
+        #return offsets
+        return [ptPanel-ptRec for ptRec, ptPanel in zip(recPoints, cornerPts)]
         
         
     #--------------------------------------------------------------------------------
@@ -2689,12 +3119,6 @@ class Skin:
         
         CurveBottom = Rhino.RhinoDoc.ActiveDoc.Objects.AddCurve(self.__m_surfCurves[0])
         CurveTop = Rhino.RhinoDoc.ActiveDoc.Objects.AddCurve(self.__m_surfCurves[1])
-        
-        #Create top/bottom curves from Surface(only extruded curves are evalid at the moment)
-        #paramU = rs.SurfaceDomain(self.__m_objSkinSurface,0)   
-        #paramV = rs.SurfaceDomain(self.__m_objSkinSurface,1)
-        #CurveBottom = rs.ExtractIsoCurve (self.__m_objSkinSurface, [paramU[0],paramV[0]], 0)
-        #CurveTop = rs.ExtractIsoCurve (self.__m_objSkinSurface, [paramU[1],paramV[1]], 0)
 
         #Create points based on panelwidth on top/bottom two curves
         
@@ -2738,10 +3162,24 @@ class Skin:
             dblFloorLevel = dblFloorLevel + dblFloorToFloor
             
         self.__m_arrBayMatrix.append(arrPointsTop)
-        self.__m_intRows = intLevel+1
-        self.__m_intColumns = len(self.__m_arrBayMatrix[0])-1
+        intRows = intLevel+1
+        intColumns = len(self.__m_arrBayMatrix[0])-1
         
-    
+        #new cell points data format
+        parsedArrBayMatrix = []
+        for intRow in range(intRows):
+            parsedArrBayMatrix.append([])
+            for intColumn in range(intColumns):
+                bayCornerPts = [self.__m_arrBayMatrix[intRow][intColumn], self.__m_arrBayMatrix[intRow][intColumn + 1],\
+                self.__m_arrBayMatrix[intRow + 1][intColumn], self.__m_arrBayMatrix[intRow + 1][intColumn + 1]]
+                
+                parsedArrBayMatrix[intRow].append(bayCornerPts)
+        
+        self.__m_arrBayMatrix = parsedArrBayMatrix
+        self.__m_intColumns = len(self.__m_arrBayMatrix[0])
+        self.__m_intRows = intRows
+        
+        
     #--------------------------------------------------------------------------------
     #Select and divide curve in specific segments
     #--------------------------------------------------------------------------------
@@ -2825,17 +3263,18 @@ class Skin:
         PanelDef = None #Stores current panel of the bay used
         BlockName = "" #Holds block name based on panel data  
          
-        intLevels = self.__m_intRows-1
+        intLevels = self.__m_intRows
         self.__m_intCurrCellRow = 0 ; self.__m_intCurrCellColumn = -1          #init level and index counters 
-        intBaysPerLevel = len(self.__m_arrBayMatrix[0])        
-        
+        intBaysPerLevel = len(self.__m_arrBayMatrix[0])
+        bayCornerPoints = []
         #Change flags store specific panel modifications to ID'd when stored and loaded from database
-        ChangeFlag = [0, 0, dict()]     #[panel height , panel width , PropertyDictionary]
+        #ChangeFlag = [0, 0, dict(), ""]     #[panel height , panel width , Property_Dictionary, skin_placement (string)]
         
         blnFloorPanelHeight = False #change panel height to match floor to floor height
         
         #-----------------------Iteration through skin Bay grid---------------------------------------------------------
         #-----------------------BAY & PANEL selection, design and generation--------------------------------------------
+        
         while True :
             
             bayPanelIndex += 1 # next panel of current bay
@@ -2848,17 +3287,19 @@ class Skin:
                 self.__m_intCurrCellColumn +=  1 # move to next cell on row
                 
                 #--------Level End detection and action
-                if self.__m_intCurrCellColumn == intBaysPerLevel-1 :
+                if self.__m_intCurrCellColumn == intBaysPerLevel :
                     self.__m_intCurrCellColumn = 0 ; self.__m_intCurrCellRow += 1 ; #start next row up
+                    if self.__m_intCurrCellRow > intLevels-1 : break
                     intBaysPerLevel = len(self.__m_arrBayMatrix[self.__m_intCurrCellRow])
                     if self.__m_resetBayAtPoints : bayPanelIndex = 0; currentBay = self.__m_panelBays[0]; self.__m_intCurrBayIndex=-1 #reset bay at beginng of row
-                    if self.__m_intCurrCellRow > intLevels : break        #exit at end of grid
+                            #exit at end of grid
                     
                 #---------Run BAY-TYPE Design Functions (run when a new bay is started)
                 
                 #store current bay corner points (needed by some functions)
-                bayCornerPoints = [self.__m_arrBayMatrix[self.__m_intCurrCellRow][self.__m_intCurrCellColumn], self.__m_arrBayMatrix[self.__m_intCurrCellRow][self.__m_intCurrCellColumn + 1],\
-                        self.__m_arrBayMatrix[self.__m_intCurrCellRow + 1][self.__m_intCurrCellColumn], self.__m_arrBayMatrix[self.__m_intCurrCellRow + 1][self.__m_intCurrCellColumn + 1]]    
+                
+                bayCornerPoints = self.GetCellProperty(self.__m_intCurrCellRow, self.__m_intCurrCellColumn, "CELL_CORNER_POINTS")
+                
                 #Run default function on bay first.        
                 currentBay, self.__m_intCurrBayIndex = self.DesFunc_Default_Panel_Bays(self.__m_panelBays, bayList)
                 
@@ -2880,64 +3321,92 @@ class Skin:
             currBayPanel = currentBay[bayPanelIndex] 
             if bayPanelIndex > len(panelMatrix[0])-2  : continue #skip rest of bay if not finished at end of row
             
-            #store panel corner points in skin
-            arrAreaPanelPoints = self.GetPanelCorners(panelMatrix, bayPanelIndex)
-            
+            #store panel point data
+            if self.__m_surfaceAsPanels == False: #2D Panel mode
+                arrAreaPanelPoints = self.GetPanelCorners(panelMatrix, bayPanelIndex) 
+                
+            else: #surface as panel points for 3D panels ( Using Fitted rectangle on surface panel)
+                rct = self.GetCellProperty(self.__m_intCurrCellRow, self.__m_intCurrCellColumn, "CELL_FITTED_RECTANGLE")
+                arrAreaPanelPoints = [rct.Corner(0), rct.Corner(1), rct.Corner(3), rct.Corner(2)] 
+                #Store Offset Pts (from fitted rectangel coners to cell corners
+                offsetPts = self.GetCellProperty(self.__m_intCurrCellRow, self.__m_intCurrCellColumn, "CELL_FITTED_REC_OFFSETS")
+                def fromPtToIntegersXYZ(pt):
+                    return [int(round(val,3)*1000) for val in [pt.X, pt.Y, pt.Z]]
+                intOffsetPts = [fromPtToIntegersXYZ(pt) for pt in offsetPts]
+                
             #----------------Panel Profile: Flagging Size data
+            
             ChangeFlag = [0, 0, dict(), ""]     #[panel height , panel width , Property_Dictionary, skin_placement (string)]
             
             #ChangeFlag[0]stores panel height number (in unit/1000), used to store and retrieve panels in database 
-            panelHeight = rs.Distance(arrAreaPanelPoints[0], arrAreaPanelPoints[2])
-            # panel height limited to current panel height, regardless of floor to floor value
-            if not blnFloorPanelHeight and panelHeight >= currBayPanel.GetHeight() - sc.doc.ModelAbsoluteTolerance : panelHeight = currBayPanel.GetHeight() 
-            ChangeFlag[0] = int(round(panelHeight,3)*1000)
-            
+            panelHeight = max(rs.Distance(arrAreaPanelPoints[0], arrAreaPanelPoints[2]), rs.Distance(arrAreaPanelPoints[1], arrAreaPanelPoints[3]))
             #ChangeFlag[1] stores panel width number (in unit/1000 ), used to store and retrieve panels in database 
-            panelWidth = rs.Distance(arrAreaPanelPoints[0],arrAreaPanelPoints[1])
+            panelWidth = max(rs.Distance(arrAreaPanelPoints[0],arrAreaPanelPoints[1]), rs.Distance(arrAreaPanelPoints[2],arrAreaPanelPoints[3]))   
+            # panel height limited to current panel height, regardless of floor to floor value
+            if self.__m_surfaceAsPanels == False:
+                if not blnFloorPanelHeight and panelHeight >= currBayPanel.GetHeight() - sc.doc.ModelAbsoluteTolerance : 
+                    panelHeight = currBayPanel.GetHeight()
+                #Check first if panel size is large enough
+                if panelHeight < self.__m_dblMinPanelHeight or panelWidth < self.__m_dblMinPanelWidth :
+                    print ">>>  Panel [Floor:"+str(self.__m_intCurrCellRow)+" Bay:"+str(self.__m_intCurrCellColumn)+" Panel:"+str(bayPanelIndex)+\
+                        "] under minimum size ("+str(round(panelWidth,4))+","+str(round(panelHeight,4))+") Discarded"
+                    continue        
+            elif self.__m_surfaceAsPanels == True: #check area in surface panels
+                rct = self.GetCellProperty(self.__m_intCurrCellRow, self.__m_intCurrCellColumn, "CELL_FITTED_RECTANGLE")
+                if rct.Width <= sc.doc.ModelAbsoluteTolerance or rct.Height <= sc.doc.ModelAbsoluteTolerance:  
+                    print ">>>  Panel [Row:"+str(self.__m_intCurrCellRow)+" Col:"+str(self.__m_intCurrCellColumn)+\
+                        "] has invalid fitted rectangle - Discarded"
+                    continue
+                if self.__m_dblMinPanelArea > 0:
+                    sp1,sp2,sp4,sp3 = self.GetCellProperty(self.__m_intCurrCellRow, self.__m_intCurrCellColumn, "CELL_CORNER_POINTS")
+                    spArea = Rhino.Geometry.Brep.CreateFromCornerPoints(sp1, sp2, sp3, sp4, sc.doc.ModelAbsoluteTolerance).GetArea()
+                    if spArea < self.__m_dblMinPanelArea :
+                        print ">>>  Panel [Row:"+str(self.__m_intCurrCellRow)+" Col:"+str(self.__m_intCurrCellColumn)+\
+                            "] under minimum area ("+str(round(spArea,4))+") Discarded"                        
+                        continue
+
+                        
+            ChangeFlag[0] = int(round(panelHeight,3)*1000)
             ChangeFlag[1] = int(round(panelWidth,3)*1000)
             
-            #Check first if panel size is large enough
-            if panelHeight < self.__m_dblMinPanelHeight or panelWidth < self.__m_dblMinPanelWidth :
-                print ">>>  Panel [Floor:"+str(self.__m_intCurrCellRow)+" Bay:"+str(self.__m_intCurrCellColumn)+" Panel:"+str(bayPanelIndex)+\
-                    "] under minimum size ("+str(round(panelWidth,4))+","+str(round(panelHeight,4))+") Discarded"
-                continue
-                
-                
+            
             #--------------Panel Profile:Flagging placement data in ChangeFlag[3] 
+            
             strSkinPlacement = 'Field'
-            placementList = ['Left', 'Right']
-            for side in [0,1]: #corner detection    
-                indexPoint = rs.PointArrayClosestPoint(self.__m_arrCornerPoints, arrAreaPanelPoints[side])
-                cornerPoint = copy.deepcopy(self.__m_arrCornerPoints[indexPoint])
-                cornerPoint[2] = arrAreaPanelPoints[side][2]
-                if rs.PointCompare(cornerPoint, arrAreaPanelPoints[side], self.__m_dblMinPanelWidth + sc.doc.ModelAbsoluteTolerance) :
-                    if strSkinPlacement == 'Field': strSkinPlacement = placementList[side]
-                    elif strSkinPlacement == 'Left': strSkinPlacement += placementList[side]
+            if self.__m_surfaceAsPanels == False:
+                placementList = ['Left', 'Right']
+                for side in [0,1]: #corner detection    
+                    indexPoint = rs.PointArrayClosestPoint(self.__m_arrCornerPoints, arrAreaPanelPoints[side])
+                    cornerPoint = copy.deepcopy(self.__m_arrCornerPoints[indexPoint])
+                    cornerPoint[2] = arrAreaPanelPoints[side][2]
+                    if rs.PointCompare(cornerPoint, arrAreaPanelPoints[side], self.__m_dblMinPanelWidth + sc.doc.ModelAbsoluteTolerance) :
+                        if strSkinPlacement == 'Field': strSkinPlacement = placementList[side]
+                        elif strSkinPlacement == 'Left': strSkinPlacement += placementList[side]
             #tagging placement
             ChangeFlag[3] = strSkinPlacement
             
+            #if Surface as Panel mode - store Offset Pts property on ChgFlag
+            if self.__m_surfaceAsPanels: ChangeFlag[2]['SP_Offsets'] = intOffsetPts
+            
             #---------Run PANEL DESIGN FUNCTION First call / Flagging Changes in ChangeFlag[2] - run in every panel.
+            #Run own panel design functions first if any (Panel Controller)
+            panelController = currBayPanel.GetPanelProperty("CustomGeoController")
+            if panelController : panelController.Run_Flag(self, ChangeFlag, currBayPanel)
+            #Run Skingenerator global panel design functions next
             if self.__m_DesignFunctions: #Run all Panel Design Functions available
                 for dsFunc in self.__m_DesignFunctions:
                     if dsFunc and dsFunc.IsPanelType() : dsFunc.Run_Flag(self, ChangeFlag, currBayPanel)
                     
-                     
-            
-            #---------Search Panel Type and Profile in Panel Database
+            #---------Panel Type and Profile LOOKUP in PANEL DATABASE
             #Checks for same panel type with same changeFlags.
             #Database format: Dictionary = {BasePanelType_Name_A:[[PanelType Object 1, ChangeFlag],[PanelType Object 2, ChangeFlag],.....],
             #                               BasePanelType_Name_B:[[PanelType Object 1, ChangeFlag],.....], BasePanelType_Name_C:....}
             
             
             if currBayPanel.GetName() in self.__m_PanelData : #found panel type?
-                for pIndex in range(len(self.__m_PanelData[currBayPanel.GetName()])):
-                    if self.__m_PanelData[currBayPanel.GetName()][pIndex][1] == ChangeFlag : #found same profile?
-                        PanelDef = self.__m_PanelData[currBayPanel.GetName()][pIndex][0] #retrieve panel object stored
-                        if  len(PanelDef.GetPanelProperty("BlockInstances")) == 0 : BlockName = ""; break #panels with empty blocks (ex.Ladybug) are skipped
-                        BlockName = rs.BlockInstanceName(PanelDef.GetPanelProperty("BlockInstances")[0])
-                        break
-                
+                PanelDef, BlockName = self.PanelProfileLookUp(self.__m_PanelData[currBayPanel.GetName()], ChangeFlag, self.__m_panelProfileTolerance)
             else: self.__m_PanelData[currBayPanel.GetName()] = [] 
+            
             #----------------------------------------------------------------------------------------------------
             #NEW PANEL TYPE: A new panel type is generated if no match found in database
             if PanelDef == None :
@@ -2948,28 +3417,35 @@ class Skin:
                 PanelDef.Copy(currBayPanel)
                 
                 #PANEL DESIGN FUNCTION SECTION - Second Call / Apply custom properties based on ChangeFlag[2] data
-                tmpChangeFlag = copy.deepcopy(ChangeFlag) #create a copy (protect from Design Functions modif.) 
-                if self.__m_DesignFunctions: #Run all Panel Design Functions available
-                    for dsFunc in self.__m_DesignFunctions:
-                        if dsFunc and dsFunc.IsPanelType() : dsFunc.Run_Modify(tmpChangeFlag, PanelDef)
-                        
+                tmpChangeFlag = copy.deepcopy(ChangeFlag) #create a copy (protect from Design Functions modif.)
+                
+                #Run panel's own controller to apply flagged changes.
+                panelController = PanelDef.GetPanelProperty("CustomGeoController")
+                if panelController : panelController.Run_Modify(tmpChangeFlag, PanelDef)                
                         
                 #ChangeFlag = tmpChangeFlag #restore change flag data
                 
                 #CUSTOM PANEL SIZE SECTION (automated edge conditions)
+                
                 #-----Name tag panel (used by Panel Inventory component) 
-
                 PanelDef.SetName(PanelDef.GetName() + " "+strSkinPlacement)
                 if round(panelHeight,3) <> round(PanelDef.GetPanelProperty("PanelHeight"),3) : 
                     PanelDef.SetName(PanelDef.GetName() + " -Height:"+str(round(panelHeight,2)))
                 if round(panelWidth,3) <> round(PanelDef.GetPanelProperty("PanelWidth"),3) : 
                     PanelDef.SetName(PanelDef.GetName() + " -Width:"+str(round(panelWidth,2)))
+                    
                 #-----Resize panel ----
                 PanelDef.SetHeight(panelHeight)
                 PanelDef.SetWidth(panelWidth)
-                #----Skin Context Paramters----
-                PanelDef.SetPanelProperty("SkinPlacement", strSkinPlacement)
                 
+                #----Store Panel Parameters ----
+                if self.__m_surfaceAsPanels : 
+                    PanelDef.SetPanelProperty("PanelOffsetPoints", offsetPts)
+                    PanelDef.ModifyCustomGeometry()
+                    numSides = self.GetCellProperty(self.__m_intCurrCellRow, self.__m_intCurrCellColumn, "CELL_SIDES")
+                    PanelDef.SetPanelProperty("SurfacePanelSides", numSides)
+                    
+                PanelDef.SetPanelProperty("SkinPlacement", strSkinPlacement)
                 
                 #CONDITIONAL DEFINITIONS SECTION
                 #----Run Conditional definitions on Panel (from panel component input)
@@ -2978,6 +3454,7 @@ class Skin:
                 
                 #Draw panel geometry to create block
                 PanelDef.Draw() 
+                
                 
                 #Add new panel type to Database
                 CurrBayList = self.__m_PanelData.get(currBayPanel.GetName())
@@ -2988,21 +3465,36 @@ class Skin:
                 
                 BlockName = "_P_ID-" + self.__m_skinGenName + "_" + str(ChangeFlag) + currBayPanel.GetName()
                 
+                print ">>> Panel " +  PanelDef.GetName() + " " + " created"
+                
+            else:
+                print ">>> Panel " +  PanelDef.GetName() + " retreived from panel database"   
+            #-----Existing and newly created panels ------
             #-----Create Block instance with current panel design
+            
+            
             if not self.__m_GeneratePanelsOnly:
-                PanelDef.CreateBlockCopy(BlockName, arrAreaPanelPoints, False)
-            
-            PanelIndeces = self.__m_BayData ['PanelIndices']
-            PanelIndeces.append([arrAreaPanelPoints, PanelDef.GetName()])
-            
-        #cRow = 1;cCol = 3; cPanel =0 
-        #bayBasePanels = self.GetCellProperty(cRow,cCol,"BAY_BASE_PANELS") ; bayPoints = self.GetCellProperty(cRow,cCol,"BAY_POINTS_PANELS")
-        #for i,p in enumerate(bayBasePanels): print ["bay panels & points", p.GetName()]
+                result = PanelDef.CreateBlockCopy(BlockName, arrAreaPanelPoints, False)
+                #check and discard panels with no objects
+                if result == None:
+                    self.__m_PanelData[currBayPanel.GetName()].pop()
+                    print ">>>>> Panel '" + PanelDef.GetName() + " has no objects - Discarded"
+                    continue
+                        
+            PanelIndices = self.__m_BayData ['PanelIndices']
+            PanelIndices.append([arrAreaPanelPoints, PanelDef.GetName()])
         
-        #print list((p for pts in bayPoints for p in pts ))
-        #for index in range(self.GetCellProperty(cRow,cCol,"BAY_NUM_PANELS")): 
+        """DUMP PANEL DATA
+        cRow = 1;cCol = 3; cPanel =0 
+        bayBasePanels = self.GetCellProperty(cRow,cCol,"BAY_BASE_PANELS") ; bayPoints = self.GetCellProperty(cRow,cCol,"BAY_POINTS_PANELS")
+        for i,p in enumerate(bayBasePanels): print ["bay panels & points", p.GetName()]
+        
+        print list((p for pts in bayPoints for p in pts ))
+        for index in range(self.GetCellProperty(cRow,cCol,"BAY_NUM_PANELS")): 
             #print ["panel instance & chngflag", self.GetCellProperty(cRow,cCol,"PANEL_INSTANCE",index).GetName(), self.GetCellProperty(cRow,cCol,"PANEL_CHANGE_FLAG",index)]
-        #print self.__m_BayData['BayIndices']
+        print self.__m_BayData['BayIndices']
+        """
+        
         return self.__m_PanelData, self.__m_BayData
     
     
@@ -3011,33 +3503,38 @@ class Skin:
     #--------------------------------------------------------------------------------
     def GetPanelMatrix(self, bayMatrix, intLevel, intBayID, currentBay):
         
-        arrAreaBayPoints = [bayMatrix[intLevel][intBayID], bayMatrix[intLevel][intBayID + 1],\
-            bayMatrix[intLevel + 1][intBayID], bayMatrix[intLevel + 1][intBayID + 1]]
+        #in surfacepanel mode create matrix format of 1 panel
+        if self.__m_surfaceAsPanels == True: 
+            panelMatrix = self.GetCellProperty(intLevel, intBayID, "CELL_CORNER_POINTS")
+            return [[panelMatrix[0], panelMatrix[1]],[panelMatrix[2], panelMatrix[3]]]
+        
+        arrAreaBayPoints = bayMatrix[intLevel][intBayID]
+        
         panelMatrix = []
         bayLength = 0
         for panel in currentBay :
             bayLength += panel.GetPanelProperty("PanelWidth")        
             
         linesBay = [0,0]
+        
         for pairIndex in [0,1]:
             linesBay[pairIndex]= rs.AddLine(arrAreaBayPoints[pairIndex*2], arrAreaBayPoints[pairIndex*2+1])
             lengthLine = rs.CurveLength(linesBay[pairIndex])
             coefLength = 1
             lengthTotals = 0
             for panel in currentBay :
-                
-                if intBayID == len(bayMatrix[intLevel])-2:
+                if intBayID == len(bayMatrix[intLevel])-1:
                     prevCoefLength = 1
                     if intBayID > 0 :
-                        prevCoefLength = rs.Distance(bayMatrix[intLevel][intBayID-1], bayMatrix[intLevel][intBayID])/bayLength
+                        prevCoefLength = rs.Distance(bayMatrix[intLevel][intBayID-1][0], bayMatrix[intLevel][intBayID][0])/bayLength
                     if (bayLength-lengthTotals)< panel.GetPanelProperty("PanelWidth")*prevCoefLength:
                         coefLength = lengthLine/bayLength
                 lengthTotals += panel.GetPanelProperty("PanelWidth")*coefLength
                 if lengthTotals < lengthLine : rs.InsertCurveKnot(linesBay[pairIndex], lengthTotals)
                 
             panelMatrix.append(rs.CurveEditPoints(linesBay[pairIndex]))
-            rs.DeleteObject(linesBay[pairIndex])
-        
+            rs.DeleteObject(linesBay[pairIndex])                
+                
         return panelMatrix
         
         
@@ -3047,12 +3544,50 @@ class Skin:
     #Retrieve 4 cornes on grid array of skin
     #--------------------------------------------------------------------------------
     def GetPanelCorners(self, arrPanelMatrix, bayPanelIndex):
+        
+        return copy.deepcopy([arrPanelMatrix[0][bayPanelIndex], arrPanelMatrix[0][bayPanelIndex + 1],\
+            arrPanelMatrix[1][bayPanelIndex], arrPanelMatrix[1][bayPanelIndex + 1]])
     
-        return [arrPanelMatrix[0][bayPanelIndex], arrPanelMatrix[0][bayPanelIndex + 1],\
-            arrPanelMatrix[1][bayPanelIndex], arrPanelMatrix[1][bayPanelIndex + 1]]
-    
-    
-    
+    def PanelProfileLookUp(self, currentBayPanelData, lookUpProfile, threshold ): 
+        #profile = [panel height , panel width , Property_Dictionary, skin_placement (string)]
+        panelDef = None; blockName = None
+        #look for perfect match first
+        for pIndex, panelData in enumerate(currentBayPanelData):
+            dbProfile = panelData[1]
+            if dbProfile == lookUpProfile : 
+                panelDef = panelData[0] #found same profile?
+                if  len(panelDef.GetPanelProperty("BlockInstances")) == 0 : blockName = ""; break #panels with empty blocks (ex.Ladybug) are skipped
+                blockName = rs.BlockInstanceName(panelDef.GetPanelProperty("BlockInstances")[0])
+                return panelDef, blockName
+        if threshold == 0: return panelDef, blockName # no value to test
+        
+        #look for imperfect match inside threshold value
+        pWidth, pHeight, pPDict, pLocation = lookUpProfile
+        for pIndex, panelData in enumerate(currentBayPanelData):
+            dbProfile = panelData[1]
+            dbWidth, dbHeight, dbDict, dbLocation = dbProfile
+            if dbLocation <> pLocation: continue #location
+            #overall dimensions
+            tolerances = [abs(x-y) for x,y in zip([pWidth, pHeight],[dbWidth, dbHeight])]
+            if max(tolerances) > threshold*1000: continue #*1000 to align with the stored format.
+            #dictinary data
+            
+            for pKey in pPDict.keys(): 
+                if pKey not in dbDict.keys() : continue #
+                if pKey == 'SP_Offsets':
+                    comps = [rs.PointCompare(p1, p2, threshold*1000) for p1, p2 in zip(pPDict['SP_Offsets'], dbDict['SP_Offsets'])]
+                    if False in comps : continue
+                
+                #found profile within tolerance
+                panelDef = panelData[0] #retrieve panel object stored
+                break
+                
+        if panelDef <> None:        
+            if  len(panelDef.GetPanelProperty("BlockInstances")) == 0 : blockName = "" #panels with empty blocks (ex.Ladybug) are skipped
+            blockName = rs.BlockInstanceName(panelDef.GetPanelProperty("BlockInstances")[0])
+            
+        return panelDef, blockName
+        
     #--------------------------------------------------------------------------------------------------
     # DESIGN FUNCTIONS SECTION
     #--------------------------------------------------------------------------------------------------
@@ -3076,15 +3611,173 @@ class Skin:
         return  [PanelBay_List[self.__m_intCurrBayIndex], self.__m_intCurrBayIndex]
         
 
+#DisplayUtilities
+#Tools for displaying visual elements on panels such as guides, corner bounding box lines, etc. 
+rc = Rhino
+import System.Drawing
+
+class DisplayUtilities:
+    
+    @staticmethod
+    def BakeGeo(geoList, fieldName, tagText=None):
+        prevDoc = sc.doc 
+        sc.doc = rc.RhinoDoc.ActiveDoc
+        if fieldName not in sc.sticky: sc.sticky[fieldName] = []
+        
+        for obj in sc.sticky[fieldName]:
+            rs.DeleteObject(obj)
+        rs.AddLayer("GEO")
+        sceneObjects = []
+        currentLayer = rs.CurrentLayer()
+        
+        for geo in geoList : 
+        
+            #prep. attributes
+            color = geo.GetUserString("Color")
+            color = eval(color) if color <> None and color <> "" else None
+            colorSource = geo.GetUserString("ColorSource")
+            colorSource = eval(colorSource) if colorSource <> None and colorSource <> "" else None
+            layer = geo.GetUserString("Layer")
+            if layer =="" or layer == None: layer="default"
+            rs.AddLayer("GEO::"+layer)
+            newAttr = rc.DocObjects.ObjectAttributes()
+            if color : newAttr.ObjectColor = color
+            if colorSource : newAttr.ColorSource = colorSource
+            newAttr.LinetypeSource = rc.DocObjects.ObjectLinetypeSource.LinetypeFromLayer
+            newAttr.LayerIndex =  rc.RhinoDoc.ActiveDoc.Layers.Find(layer, True)  
+            
+            #add object to scene
+            objDoc = None
+            if rs.IsBrep(geo): #is a surface/polysurface?
+                objDoc = sc.doc.Objects.AddBrep(geo, newAttr)
+            elif rs.IsCurve(geo): # a curve?
+                objDoc = sc.doc.Objects.AddCurve(geo, newAttr)
+            if objDoc: sceneObjects += [rs.coerceguid(objDoc)]
+            
+        #add tag if provided
+        if geoList and geoList <> [] and tagText <> None:
+            textInsertPt = [0,-.4*_UNIT_COEF,0]
+            rs.AddLayer("GEO::_Canvas")
+            rs.CurrentLayer("GEO::_Canvas")
+            tag=rs.AddText(tagText, textInsertPt, .2*_UNIT_COEF, font_style=1)
+            sceneObjects += [tag]
+            
+        #store them for future delete/update        
+        sc.sticky[fieldName] = sceneObjects
+        rs.CurrentLayer(currentLayer)
+        sc.doc = prevDoc
+        
+    @staticmethod
+    def DrawCanvasGeo(canvasPts, breps=None, boundingBox=None):
+        
+        #generates lines from corner points and lengths ratios
+        def getCornerLinesFromPoints(pts, extLengthRatio, trimLengthRatio, color):
+            startPts = pts
+            endPts = copy.deepcopy(pts)
+            endPts.append(endPts.pop(0))    
+            geoList = []
+            for stPt, endPt in zip(startPts, endPts):
+                trimLine  = rc.Geometry.Line(stPt, endPt)
+                extLine  = rc.Geometry.Line(stPt, endPt)
+                dist = stPt.DistanceTo(endPt)
+                trimLine.Extend(-dist*trimLengthRatio,-dist*trimLengthRatio)
+                extLine.Extend(dist*extLengthRatio, dist*extLengthRatio)
+                geoList.append(rc.Geometry.Line(extLine.From, trimLine.From).ToNurbsCurve())
+                geoList.append(rc.Geometry.Line(extLine.To, trimLine.To).ToNurbsCurve())
+                
+            for geo in geoList:
+                geo.SetUserString("Layer", "_Canvas") 
+                geo.SetUserString("Color", color)
+                geo.SetUserString("ColorSource", "rc.DocObjects.ObjectColorSource.ColorFromObject")
+            return geoList
+            
+        #canvas corner lines
+        canvasGeoList = getCornerLinesFromPoints(canvasPts, 1/15, -1/60, "System.Drawing.Color.Blue")
+        
+        #create base and top canvas corner lines    
+        canvasBasePts = canvasTopPts = []
+        baseGeoList = topGeoList = []
+        canvasPlane = rc.Geometry.Plane(canvasPts[0], canvasPts[1], canvasPts[3]) if len(canvasPts)> 4 \
+            else rc.Geometry.Plane(canvasPts[0], canvasPts[1], canvasPts[2])
+        if breps: # canvas for created objects
+            geoBbox = rc.Geometry.BoundingBox.Empty
+            for brep in breps:
+                geoBbox.Union(brep.GetBoundingBox(canvasPlane))
+            canvasBasePts = list(geoBbox.GetCorners()[0:4])
+            canvasTopPts = list(geoBbox.GetCorners()[4:8]) 
+        elif boundingBox: #canvas for base curves/breps
+            canvasBasePts = list(boundingBox.GetCorners()[0:4])
+            canvasTopPts = list(boundingBox.GetCorners()[4:8]) 
+        xForm = rc.Geometry.Transform.PlaneToPlane(rc.Geometry.Plane.WorldXY, canvasPlane)
+        if canvasBasePts <> []:
+            baseGeoList = getCornerLinesFromPoints(canvasBasePts, 0, 1/5, "System.Drawing.Color.Red")
+            if breps:
+                for geo in baseGeoList: geo.Transform(xForm) 
+        if canvasTopPts <> []:
+            topGeoList = getCornerLinesFromPoints(canvasTopPts, 0, 1/5, "System.Drawing.Color.Red")        
+            if breps:
+                for geo in topGeoList: geo.Transform(xForm)            
+            
+        return canvasGeoList + baseGeoList + topGeoList
+
+
+
+
+
+
+
+class DynamicGeometry:
+    
+    __m_baseParameters = []
+    __m_dynamicParameters = []
+    __m_dynamicBreps = []    
+    __m_storedDynamicParameters = None
+    __m_storedBrepOutput = None
+    __m_warningData = []
+    
+    #CONSTRUCTOR -------------------------------------------------------------------------------------------
+    def __init__(self, baseParameters, dynamicParameters):
+        
+        self.__m_baseParameters = baseParameters
+        self.__m_dynamicParameters = dynamicParameters
+        
+    @property
+    def WarningData(self):
+        return self.__m_warningData        
+        
+    def SetParameter(self, value, numParam=None):
+        
+        if numParam >= len(self.__m_dynamicParameters) : return False
+        
+        if numParam == None: self.__m_dynamicParameters =list((value for n in self.__m_dynamicParameters))
+        else: self.__m_dynamicParameters[numParam] = value
+        
+        return True
+        
+    def Reset(self):
+        pass
+        
+    def Run(self):
+        return self.__m_dynamicBreps
+        
+
+
+
+
 # Design Function  Class
 # Base class used for all DesignFunctions
 
 class BaseDesignFunction:
     
+    __m_warningData = []
     
     #CONSTRUCTOR -------------------------------------------------------------------------------------------
     def __init__(self):
         pass
+        
+    @property
+    def WarningData(self):
+        return self.__m_warningData   
       
     def IsLayoutType(self):
         pass
@@ -3107,12 +3800,107 @@ class BaseDesignFunction:
     def Run_Modify(self, ChangeFlag, BasePanel):
         pass
         
+        
+
+#In-Panel controller to be referenced on systems panels
+class SystemsPanelController(BaseDesignFunction):
+    
+    __m_functionType = ''
+    __m_customPanelIndex = 0
+    warningData = []
+    
+    #CONSTRUCTOR -------------------------------------------------------------------------------------------
+    def __init__(self):
+        
+        self.__m_functionType = 'Panel'
+        self.__m_dataIndex = 0
+        self.__m_customPanelIndex = 1
+        
+        excludeCustomSize = False
+        if excludeCustomSize : self.__m_excludeCustomSizePanels = excludeCustomSize
+                 
+
+    def Reset(self):
+        self.__m_dataIndex = 0
+        self.__m_customPanelIndex = 1
+        
+    def IsLayoutType(self):
+        if self.__m_functionType == 'Layout': return True
+        return False
+        
+        
+    def IsPanelType(self):
+        if self.__m_functionType == 'Panel': return True
+        return False        
+        
+        
+    #----- functionCall valid skin parameters to us as inputs ------
+    # skinInstance :  a reference to the skin object calling this function
+    # ChangeFlag : List used in Skin Generator to identify panel changes - format: [panel height , panel width , PropertyDictionary ]
+    # BasePanel : Panel used as base for new custom panel (can only be used on callState=1 section
+
+    #1st call - Flagging panel modifications
+    def Run_Flag(self, skinInstance, ChangeFlag, BasePanel):
+        
+        #Systems panels don't flag any information to modify panel
+        return
+    
+    #2nd call - Performing panel modifications 
+    def Run_Modify(self, ChangeFlag, BasePanel):
+
+        propDict = ChangeFlag[2]
+        if propDict == 0 : return
+        
+        #go through flagged changes on panel
+        customFlag = False
+        for param, value in zip(propDict.keys(), propDict.values()):
+            customFlag = True
+            #run panel funcitons based on type of parameter change
+            if  param == "Shading":
+                strData = value[0]
+                if "layerName" in value[0]: 
+                    splitData = value[0].rsplit("=",1)
+                    splitData[1] = splitData[1][0:7] if splitData[1].find("-") else  splitData[1][0:8]
+                    strData = splitData[0]+"='Layer_"+splitData[1]+"'"
+                if "type=" in value[0]:
+                    exec("BasePanel.ModifyShadingType("+strData+")")
+                    del value[0]
+                elif  "index=" in value[0]:
+                    exec("BasePanel.ModifyShadingIndex("+strData+")")
+                    del value[0]
+            elif param == "Window":
+                exec("BasePanel.ModifyWindow("+value[0]+")")
+                del value[0]
+            elif param == "Mullion":
+                exec("BasePanel.ChangeMullionType("+value[0]+")")
+                del value[0]
+            elif param == "CustomGeometry":
+                exec("BasePanel.ModifyCustomGeometry("+value[0]+")")
+                del value[0]
+            else:
+                if BasePanel.GetPanelProperty(param) <> value:
+                    BasePanel.SetPanelProperty(param, value)
+
+        #Add Version number (.x)  to the panel name (used on panel inventory viewer)
+        if customFlag :
+            panelName = BasePanel.GetName()+"."+str(self.__m_customPanelIndex)
+            BasePanel.SetName(panelName)
+            self.__m_customPanelIndex +=1
+                    
+        return 
+            
+        
+        
+sc.sticky["SGLib_DisplayUtilities"] = DisplayUtilities
 
 sc.sticky["SGLib_Panel"] = Panel
 
 sc.sticky["SGLib_Skin"] = Skin
 
+sc.sticky["SGLib_DynamicGeometry"] = DynamicGeometry
+
 sc.sticky["SGLib_DesignFunction"] = BaseDesignFunction
 
+sc.sticky["SGLib_SystemsPanelController"] = SystemsPanelController
 
 print "SkinDesigner Running..."

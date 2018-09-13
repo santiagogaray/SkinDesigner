@@ -32,8 +32,6 @@ Use this component to generate a shade object to be added to a panel
         fromBottomEdge:  A floating point value indicating the separation of the shade from the bottom edge of the panel or the window if it is a window shade. Default value depends on shade orientation: In horizotnal shades it is the panel height (top of panel) or window height (top of window) if it is a window shade. In vertical shades default value is is 0.0. Also negative values are used to set dimensions from the top of panel or window.
         fromOppositeEdge:  A floating point value indicating the separation of the shade from the opposite edge of the panel or the window if it is a window shade. Default value is 0.0 (no separation ).
         rotation: A floating point value indicating the rotation around the shade's long axis, with center at the mid point of the shade's width. Default is 0.0
-        shiftEnd1: A vector that is used to shift in scene units on x,y,z, the outside end point of the first shade edge. It is provided to be able to create custom-shaped shades. Default value is 0,0,0
-        shiftEnd2: A vector that is used to shift in scene units on x,y,z, the outside end point of the second shade edge. It is provided to be able to create custom-shaped shades. Default value is 0,0,0
     Returns:
         shadingSystem: A list with shading data packed to be connected to a Panel component shadingSystem input
 
@@ -42,7 +40,7 @@ Use this component to generate a shade object to be added to a panel
 
 ghenv.Component.Name = "SkinDesigner_Shading"
 ghenv.Component.NickName = 'Shading'
-ghenv.Component.Message = 'VER 0.1.17\nDec_17_2017'
+ghenv.Component.Message = 'VER 0.5.00\nJul_18_2018'
 ghenv.Component.Category = "SkinDesigner"
 ghenv.Component.SubCategory = "02 | Parameters"
 try: ghenv.Component.AdditionalHelpFromDocStrings = "3"
@@ -79,8 +77,6 @@ for input in range(numInputs):
     elif input == 8: inputName = 'fromLeftEdge' ; access = accessItem
     elif input == 9: inputName = 'fromBottomEdge' ; access = accessItem
     elif input == 10: inputName = 'fromOppositeEdge'; access = accessItem
-    elif input == 11: inputName = 'shiftEnd1'; access = accessItem; typeHint = typeVector
-    elif input == 12: inputName = 'shiftEnd2'; access = accessItem; typeHint = typeVector
     else: continue
     
     ghenv.Component.Params.Input[input].NickName = inputName
@@ -158,12 +154,12 @@ except: pass
 shiftEndVectors = [None, None]
 try:
     if shiftEnd1 == None :shiftEndVectors[0] = [0,0,0]
-    else: [shiftEnd1.X, shiftEnd1.Y, shiftEnd1.Z]
-except: shiftEndVectors[0] = shiftEndVectors[0] = [0,0,0]
+    else: shiftEndVectors[0] = [shiftEnd1[0], shiftEnd1[1], shiftEnd1[2]]
+except: shiftEndVectors[0] = [0,0,0]
 try:
     if shiftEnd2 == None : shiftEndVectors[1] = [0,0,0]
-    else: shiftEndVectors[1] = [shiftEnd2.X, shiftEnd2.Y, shiftEnd2.Z]
-except: shiftEndVectors[1] = shiftEndVectors[1] = [0,0,0]
+    else: shiftEndVectors[1] = [shiftEnd2[0], shiftEnd2[1], shiftEnd2[2]]
+except: shiftEndVectors[1] = [0,0,0]
 
 
 

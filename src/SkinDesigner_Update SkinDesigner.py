@@ -35,7 +35,7 @@ Provided by SkinDesigner 0.0.65
 
 ghenv.Component.Name = "SkinDesigner_Update SkinDesigner"
 ghenv.Component.NickName = 'updateSkinDesigner'
-ghenv.Component.Message = 'VER 0.1.16\nSep_22_2017'
+ghenv.Component.Message = 'VER 0.5.00\nSep_13_2018'
 ghenv.Component.IconDisplayMode = ghenv.Component.IconDisplayMode.application
 ghenv.Component.Category = "SkinDesigner"
 ghenv.Component.SubCategory = "05 | Update"

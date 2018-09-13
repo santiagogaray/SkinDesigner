@@ -34,9 +34,9 @@ Use this component to load skin-specific parameters to skinGenerator
 """
 
 
-ghenv.Component.Name = "SkinDesigner_skinParameters"
-ghenv.Component.NickName = 'skinParameters'
-ghenv.Component.Message = 'VER 0.1.16\nSep_22_2017'
+ghenv.Component.Name = "SkinDesigner_SkinParameters"
+ghenv.Component.NickName = 'SkinParameters'
+ghenv.Component.Message = 'VER 0.5.00\nJul_18_2018'
 ghenv.Component.Category = "SkinDesigner"
 ghenv.Component.SubCategory = "01 | Construction"
 try: ghenv.Component.AdditionalHelpFromDocStrings = "2"

@@ -39,7 +39,7 @@ Use this component to generate a Wall system to be added to a Panel component.
 
 ghenv.Component.Name = "SkinDesigner_System-Wall"
 ghenv.Component.NickName = 'System-Wall'
-ghenv.Component.Message = 'VER 0.1.17\nDec_17_2017'
+ghenv.Component.Message = 'VER 0.5.00\nJul_18_2018'
 ghenv.Component.Category = "SkinDesigner"
 ghenv.Component.SubCategory = "02 | Parameters"
 try: ghenv.Component.AdditionalHelpFromDocStrings = "2"

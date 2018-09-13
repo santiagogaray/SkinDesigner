@@ -39,7 +39,7 @@ Use this component to generate four shade objects placed around the window to be
 
 ghenv.Component.Name = "SkinDesigner_ShadingBox"
 ghenv.Component.NickName = 'ShadingBox'
-ghenv.Component.Message = 'VER 0.1.17\nDec_17_2017'
+ghenv.Component.Message = 'VER 0.5.00\nJul_18_2018'
 ghenv.Component.Category = "SkinDesigner"
 ghenv.Component.SubCategory = "02 | Parameters"
 try: ghenv.Component.AdditionalHelpFromDocStrings = "3"

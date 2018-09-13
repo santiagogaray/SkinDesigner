@@ -57,7 +57,7 @@ Note mullion thickness inputs accept floating point values or lists of three val
 
 ghenv.Component.Name = "SkinDesigner_System-CurtainWall"
 ghenv.Component.NickName = 'System-CurtainWall'
-ghenv.Component.Message = 'VER 0.1.17\nDec_17_2017'
+ghenv.Component.Message = 'VER 0.5.00\nJul_18_2018'
 ghenv.Component.Category = "SkinDesigner"
 ghenv.Component.SubCategory = "02 | Parameters"
 try: ghenv.Component.AdditionalHelpFromDocStrings = "2"

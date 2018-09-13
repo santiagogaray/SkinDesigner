@@ -31,7 +31,7 @@ This component was written thanks to Giulio Piacentino a really helpful example.
 
 ghenv.Component.Name = "SkinDesigner_ExportSkinDesigner"
 ghenv.Component.NickName = 'ExportSkinDesigner'
-ghenv.Component.Message = 'VER 0.1.16\nSep_22_2017'
+ghenv.Component.Message = 'VER 0.5.00\nSep_13_2018'
 ghenv.Component.Category = "SkinDesigner"
 ghenv.Component.SubCategory = "05 | Update"
 

@@ -28,16 +28,16 @@ Refer to PanelLib API for Definition input functions
         fromLeft: A floating point value indicating in scene units the horizontal placement of the window from the left edge of the panel. Panel properties 'PanelWidth',  'PanelHeight' and 'C'(centered on panel) are valid. Default value is 'C'.
         fromBottom: A floating point value indicating in scene units the vertical placement of the window from the bottom edge of the panel. Panel properties 'PanelWidth', 'PanelHeight' and 'C'(centered on panel) are valid. Default value is 'C'.
         recess : A floating point value indicating in scene units the location of the glass pane relative to the front face of the wall element. Positive values place the glass pane inbound from the wall surface, negative values project the glass pane outbound. Default value is 0.0.
-
+        conformSurfPanel : A boolean indicating if window conforms to the shape of a surface (for Surface Panel Mode' only). default is False.
     Returns:
-        windowSystem: A list with window data packed to be connected to a Panel component windowSystem input
+        windowSystem: A list with window data formatted to be connected to a Panel component windowSystem input
 
 """
 
 
 ghenv.Component.Name = "SkinDesigner_Window"
 ghenv.Component.NickName = 'Window'
-ghenv.Component.Message = 'VER 0.1.16\nSep_22_2017'
+ghenv.Component.Message = 'VER 0.5.00\nJul_18_2018'
 ghenv.Component.Category = "SkinDesigner"
 ghenv.Component.SubCategory = "02 | Parameters"
 try: ghenv.Component.AdditionalHelpFromDocStrings = "1"
@@ -55,11 +55,13 @@ wHeight = "PanelHeight/2"
 wFromLeft = "C"
 wFromBottom = "C"
 wRecess = 0.0
+wConformSurface = False
 
 if width<>None : wWidth = width
 if height <> None : wHeight = height
 if fromLeft <> None : wFromLeft = fromLeft
 if fromBottom <> None : wFromBottom = fromBottom
 if recess <> None : wRecess = -recess
+if conformSurfPanel <> None : wConformSurface = conformSurfPanel
 
-windowSystem = [wWidth,wHeight, wFromLeft, wFromBottom, wRecess]
+windowSystem = [wWidth,wHeight, wFromLeft, wFromBottom, wRecess, wConformSurface]

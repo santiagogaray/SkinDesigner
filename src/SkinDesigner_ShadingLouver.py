@@ -34,8 +34,6 @@ Use this component to generate a shade louver to be added to a panel
         fromRightEdge: A floating point value indicating the separation of the louvers from the right edge of the panel or the window if it is a window louver. Default value is 0.0.
         fromBottomEdge:  A floating point value indicating the separation of the louvers from the bottom edge of the panel or the window if it is a window louver. Default value is 0.0.
         fromTopEdge:  A floating point value indicating the separation of the louvers from the top edge of the panel or the window if it is a window louver. Default value is 0.0.
-        shiftEnd1: A vector that is used to shift in scene units on x,y,z, the outside end point of the first edge of the louvers. It is provided to be able to create custom-shaped louvers. Default value is 0,0,0
-        shiftEnd2: A vector that is used to shift in scene units on x,y,z, the outside end point of the second edge of the louvers. It is provided to be able to create custom-shaped louvers. Default value is 0,0,0
     Returns:
         shadingSystem: A list with shading data packed to be connected to a Panel component shadingSystem input
 
@@ -48,7 +46,7 @@ Use this component to generate a shade louver to be added to a panel
 
 ghenv.Component.Name = "SkinDesigner_ShadingLouver"
 ghenv.Component.NickName = 'ShadingLouver'
-ghenv.Component.Message = 'VER 0.1.17\nDec_17_2017'
+ghenv.Component.Message = 'VER 0.5.00\nJul_18_2018'
 ghenv.Component.Category = "SkinDesigner"
 ghenv.Component.SubCategory = "02 | Parameters"
 try: ghenv.Component.AdditionalHelpFromDocStrings = "3"
@@ -81,9 +79,6 @@ for input in range(numInputs):
     elif input == 10: inputName = 'fromRightEdge'; access = accessItem
     elif input == 11: inputName = 'fromBottomEdge' ; access = accessItem
     elif input == 12: inputName = 'fromTopEdge'; access = accessItem
-    elif input == 13: inputName = '------------------------'
-    elif input == 14: inputName = 'shiftEnd1'; access = accessItem; typeHint = typeVector
-    elif input == 15: inputName = 'shiftEnd2'; access = accessItem; typeHint = typeVector
     else: continue
     
     ghenv.Component.Params.Input[input].NickName = inputName
