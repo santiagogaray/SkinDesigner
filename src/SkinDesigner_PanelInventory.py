@@ -36,7 +36,7 @@ On bold are displayed the panels types that have standard dimensiosn (not custom
 
 ghenv.Component.Name = "SkinDesigner_PanelInventory"
 ghenv.Component.NickName = 'PanelInventory'
-ghenv.Component.Message = 'VER 0.5.00\nAug_24_2018'
+ghenv.Component.Message = 'VER 0.5.01\nSep_14_2018'
 ghenv.Component.Category = "SkinDesigner"
 ghenv.Component.SubCategory = "04 | Display"
 
@@ -125,9 +125,10 @@ if _skinPanelData <> [] and locP:
                 panelCounter += blockCount
                 #create text info
                 if drawGeometry:
-                    
                     panelName = panelName.replace(" ", "\n\r", 1)
                     prevLayer = rs.CurrentLayer()
+                    if not rs.IsLayer("GEO::_Canvas"):
+                        rs.AddLayer("GEO::_Canvas")
                     rs.CurrentLayer("GEO::_Canvas")
                     txtPlane = rs.PlaneFromFrame(rs.PointSubtract(arrBoxPoints[0],[0,0,rowSeparation/2]), (1,0,0), (0,0,1))
                     textTypes.append(rs.AddText(panelName + "\n\rCount: " + str(blockCount), txtPlane, fontHeight, font_style=fontStyle))

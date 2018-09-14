@@ -36,7 +36,7 @@ This is the main SkinDesigner component which contains the Panel, Skin and BaseD
 
 ghenv.Component.Name = "SkinDesigner_SkinDesigner"
 ghenv.Component.NickName = 'SkinDesigner'
-ghenv.Component.Message = 'VER 0.5.00\nSep_12_2018'
+ghenv.Component.Message = 'VER 0.5.01\nSep_14_2018'
 ghenv.Component.Category = "SkinDesigner"
 ghenv.Component.SubCategory = "01 | Construction"
 try: ghenv.Component.AdditionalHelpFromDocStrings = "1"
@@ -2104,14 +2104,16 @@ class Panel:
         
         if rs.PointCompare(arrStartPoint, arrEndPoint) : return #return if same points start,end
         
-        mullionAxis = rg.Vector3d(arrEndPoint-arrStartPoint)
+        startPt = rg.Point3d(arrStartPoint[0], arrStartPoint[1], arrStartPoint[2])        
+        endPt = rg.Point3d(arrEndPoint[0], arrEndPoint[1], arrEndPoint[2])
+        mullionAxis = rg.Vector3d(endPt-startPt)
         vecCtr = (mullionAxis/mullionAxis.Length)*(dblWidth/2)
         vecCtr.Rotate(math.radians(-90), rg.Vector3d.YAxis)
         
-        leftStartPt = rg.Point3d(arrStartPoint); leftStartPt.Y += dblThickness
-        rightStartPt = arrStartPoint
-        leftEndPt = rg.Point3d(arrEndPoint); leftEndPt.Y += dblThickness 
-        rightEndPt = arrEndPoint
+        leftStartPt = rg.Point3d(startPt); leftStartPt.Y += dblThickness
+        rightStartPt = startPt
+        leftEndPt = rg.Point3d(endPt); leftEndPt.Y += dblThickness 
+        rightEndPt = endPt
         
         #offset buggy once 3d panels was added.
         if arrOffsetStart:
@@ -2122,7 +2124,7 @@ class Panel:
         curve1 = rg.Curve.CreateInterpolatedCurve([rightStartPt, leftStartPt, leftEndPt, rightEndPt, rightStartPt],1)
         
         if dblRotation <> 0 : 
-            ptCenter = rg.Point3d(arrStartPoint.X+dblWidth/4,arrStartPoint.Y+dblThickness/2,arrStartPoint.Z)  
+            ptCenter = rg.Point3d(startPt.X+dblWidth/4,startPt.Y+dblThickness/2,startPt.Z)  
             curve1.Rotate(math.radians(dblRotation), mullionAxis, ptCenter)
             curve1.Translate(curve1.PointAtStart-rightStartPt)
         curve1.Translate(vecCtr)
