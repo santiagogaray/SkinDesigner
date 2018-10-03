@@ -36,7 +36,7 @@ This is the main SkinDesigner component which contains the Panel, Skin and BaseD
 
 ghenv.Component.Name = "SkinDesigner_SkinDesigner"
 ghenv.Component.NickName = 'SkinDesigner'
-ghenv.Component.Message = 'VER 0.5.01\nSep_14_2018'
+ghenv.Component.Message = 'VER 0.5.01\nOct_03_2018'
 ghenv.Component.Category = "SkinDesigner"
 ghenv.Component.SubCategory = "01 | Construction"
 try: ghenv.Component.AdditionalHelpFromDocStrings = "1"
@@ -1925,7 +1925,9 @@ class Panel:
                 rg.LineCurve(rg.Point3d(0,0,0), rg.Point3d(0, self.__m_dblWallThickness, 0)), True)
             wallObjectTemp = self.__m_arrWallBreps[0]
             wallBreps = rg.Brep.CreateBooleanDifference(wallObjectTemp, GlassObjectTemp, rcTolerance)
-            self.__m_arrWallBreps = list(wallBreps)
+            
+            if wallBreps <> None:
+                self.__m_arrWallBreps = list(wallBreps)
             
             if wallBreps == None or  wallBreps == []:
                 self.__m_warningData.append("Wall shape invalid - discarded")
