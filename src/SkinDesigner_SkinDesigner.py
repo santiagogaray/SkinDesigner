@@ -36,7 +36,7 @@ This is the main SkinDesigner component which contains the Panel, Skin and BaseD
 
 ghenv.Component.Name = "SkinDesigner_SkinDesigner"
 ghenv.Component.NickName = 'SkinDesigner'
-ghenv.Component.Message = 'VER 0.5.01\nOct_03_2018'
+ghenv.Component.Message = 'VER 0.5.02\nOct_23_2018'
 ghenv.Component.Category = "SkinDesigner"
 ghenv.Component.SubCategory = "01 | Construction"
 try: ghenv.Component.AdditionalHelpFromDocStrings = "1"
@@ -2282,7 +2282,7 @@ class Panel:
             cp1, cp2, cp4, cp3 = cPSCornerPts
             curvePanel = rg.Curve.CreateInterpolatedCurve([cp1, cp2, cp3, cp4, cp1],1)
             curvePanel.Translate(0, self.__m_CG_vecPlacement.Y, 0)
-            extrusion = rg.Extrusion.Create(curvePanel, 2, True)
+            extrusion = rg.Extrusion.Create(curvePanel, 2*self.__m_unitCoef, True)
             tmpBoxBrep = extrusion.ToBrep()
             
         if self.__m_CG_windowDepth and self.__m_blnShowWindow:   

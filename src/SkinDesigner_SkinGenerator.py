@@ -44,7 +44,7 @@ To add more panels bays in the construction, simply zoom into the component and 
 
 ghenv.Component.Name = "SkinDesigner_SkinGenerator"
 ghenv.Component.NickName = 'SkinGenerator'
-ghenv.Component.Message = 'VER 0.5.00\nSep_13_2018'
+ghenv.Component.Message = 'VER 0.5.01\nSep_23_2018'
 ghenv.Component.Category = "SkinDesigner"
 ghenv.Component.SubCategory = "01 | Construction"
 try: ghenv.Component.AdditionalHelpFromDocStrings = "2"
@@ -376,7 +376,7 @@ def GetSurfaceCornerPts(surfaces):
             #add fourth point for compatibility(AT 0.1 unit from p1)
             p4 = Rhino.Geometry.Point3d(p1)  #repeat first point
             vecShift = Rhino.Geometry.Vector3d(p3-p2)
-            vecShift = vecShift/vecShift.Length*0.01*_UNIT_COEF 
+            vecShift = vecShift/vecShift.Length*sc.doc.ModelAbsoluteTolerance*3
             p4 += vecShift #move it a bit to avoid coincident pts
             pts = [p1,p2,p4,p3]
         else: continue #ignore surfaces with more than four points
