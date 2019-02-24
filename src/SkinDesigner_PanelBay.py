@@ -39,7 +39,7 @@ To remove panels from the construction, zoom into the component and hit the lowe
 
 ghenv.Component.Name = "SkinDesigner_PanelBay"
 ghenv.Component.NickName = 'PanelBay'
-ghenv.Component.Message = 'VER 0.5.00\nJul_18_2018'
+ghenv.Component.Message = 'VER 0.5.01\nFeb_24_2019'
 ghenv.Component.Category = "SkinDesigner"
 ghenv.Component.SubCategory = "01 | Construction"
 try: ghenv.Component.AdditionalHelpFromDocStrings = "2"
