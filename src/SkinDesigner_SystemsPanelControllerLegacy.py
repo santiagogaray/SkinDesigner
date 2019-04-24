@@ -35,7 +35,7 @@ Use this component to modify panel systems parameters of specifc system panels (
 
 ghenv.Component.Name = "SkinDesigner_SystemsPanelControllerLegacy"
 ghenv.Component.NickName = 'SystemsPanelControllerLegacy'
-ghenv.Component.Message = 'VER 0.5.00\nJul_18_2018'
+ghenv.Component.Message = 'VER 0.5.01\nApr_23_2019'
 ghenv.Component.Category = "SkinDesigner"
 ghenv.Component.SubCategory = "03 | Design Controllers"
 try: ghenv.Component.AdditionalHelpFromDocStrings = "2"
@@ -87,9 +87,11 @@ else:
                 while True:
                     try:
                         self.__m_dataList.remove("valueMax")
-                    except:break                    
+                    except:break          
+            try:
                 self.__m_dataList = list((float(eval(data)) for data in self.__m_dataList))
-    
+            except:
+                pass
             if panelNamesFilter <> []: self.__m_panelNameList = panelNamesFilter
             
             excludeCustomSize = False
