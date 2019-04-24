@@ -35,7 +35,7 @@ Provided by SkinDesigner 0.0.65
 
 ghenv.Component.Name = "SkinDesigner_Update SkinDesigner"
 ghenv.Component.NickName = 'updateSkinDesigner'
-ghenv.Component.Message = 'VER 0.5.00\nSep_13_2018'
+ghenv.Component.Message = 'VER 0.5.01\nApr_24_2019'
 ghenv.Component.IconDisplayMode = ghenv.Component.IconDisplayMode.application
 ghenv.Component.Category = "SkinDesigner"
 ghenv.Component.SubCategory = "05 | Update"
@@ -86,7 +86,7 @@ def downloadSourceAndUnzip():
     """
     Download the source code from github and unzip it in temp folder
     """
-    url = "https://github.com/PayettePeople/SkinDesigner/archive/master.zip"
+    url = "https://github.com/santiagogaray/SkinDesigner/archive/master.zip"
     targetDirectory = os.path.join(folders.ClusterFolders[0] + 'SDgithub')
     
     # download the zip file
