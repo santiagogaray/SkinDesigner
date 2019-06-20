@@ -30,6 +30,7 @@ Use this component to generate a Wall system to be added to a Panel component.
         tileThickness: A floating point value that indicates in scene units the thickness of the tile. Panel properties 'PanelWidth' and 'PanelHeight' are valid. Default value is 0.025m (1 inch) if tileWidth and tileThickness are specified, otherwise is 0.00.
         tileJoint: A floating point value that indicates in scene units the joint dimension between tiles.  Default value is 0.025m (1 inch) if tileWidth and tileThickness are specified, otherwise is 0.00.
         tileEdgeOffset: A floating point value that indicates in scene units the dimentsion of  the joint around the panel edges.  Default value is tileJoint/2 if tileJoint is greater than 0.0, otherwise is 0.0.
+        layerName: A string indicating the layer the clad geometry will use when drawn in the scene. Default is _P_Clad
     Returns:
         panelSystem: A list with the wall system data packed to be connected to a Panel component panelSystem input
 
@@ -39,7 +40,7 @@ Use this component to generate a Wall system to be added to a Panel component.
 
 ghenv.Component.Name = "SkinDesigner_System-Wall"
 ghenv.Component.NickName = 'System-Wall'
-ghenv.Component.Message = 'VER 0.5.00\nJul_18_2018'
+ghenv.Component.Message = 'VER 0.5.01\nJun_20_2019'
 ghenv.Component.Category = "SkinDesigner"
 ghenv.Component.SubCategory = "02 | Parameters"
 try: ghenv.Component.AdditionalHelpFromDocStrings = "2"
@@ -52,6 +53,7 @@ numInputs = ghenv.Component.Params.Input.Count
 accessList = ghenv.Component.Params.Input[0].Access.list
 accessItem = ghenv.Component.Params.Input[0].Access.item
 typeFloat = GhPython.Component.NewFloatHint()
+typeString = GhPython.Component.NewStrHint()
 
 for input in range(numInputs):
     access = accessList
@@ -64,6 +66,7 @@ for input in range(numInputs):
     elif input == 5: inputName = 'tileThickness' ; access = accessItem; typeHint = typeFloat
     elif input == 6: inputName = 'tileJoint'; access = accessItem; typeHint = typeFloat
     elif input == 7: inputName = 'tileEdgeOffset'; access = accessItem; typeHint = typeFloat
+    elif input == 8: inputName = 'layerName'; access = accessItem; typeHint = typeString     
     else: continue
     
     ghenv.Component.Params.Input[input].NickName = inputName
@@ -107,11 +110,17 @@ if  numInputs > 6:
     if tileEdgeOffset == None : tileEdgeOffset = tileJoint/2
 else: tileEdgeOffset = tileJoint/2
 
+try:
+    if layerName == None: 
+        layerName = "_P_Clad"
+    else:
+        if layerName[:3] <> "_P_":
+            layerName = "_P_" + layerName
+except: layerName = "_P_Clad"
 
 panelSystem= [0,0,0,0]
-paneName="_P_Clad"
 paneThickness = .01*_UNIT_COEF #standard pane thickness (not relevant)
-PanelActions = "AddPane('"+ paneName + "', thickness="+str(paneThickness)+", offset="+str(paneThickness)+", offsetEdge="+str(tileEdgeOffset)+\
+PanelActions = "AddPane('"+ layerName + "', thickness="+str(paneThickness)+", offset="+str(paneThickness)+", offsetEdge="+str(tileEdgeOffset)+\
     ", tileWidth="+str(tileWidth)+", tileHeight="+str(tileHeight)+", tileThickness="+str(tileThickness)+", tileGap="+str(tileJoint)+")\r\n"
 
 
