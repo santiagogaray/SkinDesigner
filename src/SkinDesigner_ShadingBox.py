@@ -39,7 +39,7 @@ Use this component to generate four shade objects placed around the window to be
 
 ghenv.Component.Name = "SkinDesigner_ShadingBox"
 ghenv.Component.NickName = 'ShadingBox'
-ghenv.Component.Message = 'VER 0.5.00\nJul_18_2018'
+ghenv.Component.Message = 'VER 0.5.01\nJun_20_2019'
 ghenv.Component.Category = "SkinDesigner"
 ghenv.Component.SubCategory = "02 | Parameters"
 try: ghenv.Component.AdditionalHelpFromDocStrings = "3"
@@ -93,14 +93,13 @@ if offsetFromPanel <> None:
 else:
     if offsetFromWindow <> None: offset = - eval(str(offsetFromWindow)) - thickness/2
     shadingSystem = "AddShadingType('HorizontalWindowShade'"+", layerName="+ layerName +", fromLeftBottom = [-Window['width']+"+str(offset)+", Window['height']+"+str(-offset)+\
-        "], fromEdge="+str(offset)+",width="+str(thickness)+", thickness="+str(width)+", offset="+str(offsetFromWall)+", shiftEnds="+str([shiftEndVectors[3],shiftEndVectors[2]])+")\r\n"
+        "], fromEdge="+str(offset)+",width="+str(thickness)+", thickness="+str(width)+", offset="+str(offsetFromWall)+", shiftEnds="+str([shiftEndVectors[0],shiftEndVectors[1]])+")\r\n"
     shadingSystem +=  "AddShadingType('HorizontalWindowShade'"+", layerName="+ layerName +", fromLeftBottom = [-Window['width']+"+str(offset)+", -Window['height']+"+str(offset)+\
-        "], fromEdge="+str(offset)+",width="+str(thickness)+", thickness="+str(width)+", offset="+str(offsetFromWall)+", shiftEnds="+str([shiftEndVectors[0],shiftEndVectors[1]])+")\r\n"
-    shadingSystem += "AddShadingType('VerticalWindowShade'"+", layerName="+ layerName +", fromLeftBottom = [-Window['width']+"+str(offset)+", -Window['height']+"+str(offset)+\
         "], fromEdge="+str(offset)+",width="+str(thickness)+", thickness="+str(width)+", offset="+str(offsetFromWall)+", shiftEnds="+str([shiftEndVectors[3],shiftEndVectors[2]])+")\r\n"
+    shadingSystem += "AddShadingType('VerticalWindowShade'"+", layerName="+ layerName +", fromLeftBottom = [-Window['width']+"+str(offset)+", -Window['height']+"+str(offset)+\
+        "], fromEdge="+str(offset)+",width="+str(thickness)+", thickness="+str(width)+", offset="+str(offsetFromWall)+", shiftEnds="+str([shiftEndVectors[3],shiftEndVectors[0]])+")\r\n"
     shadingSystem +=  "AddShadingType('VerticalWindowShade'"+", layerName="+ layerName +", fromLeftBottom = [Window['width']+"+str(-offset)+", -Window['height']+"+str(offset)+\
-        "], fromEdge="+str(offset)+",width="+str(thickness)+", thickness="+str(width)+", offset="+str(offsetFromWall)+", shiftEnds="+str([shiftEndVectors[0],shiftEndVectors[1]])+")\r\n"
-
+        "], fromEdge="+str(offset)+",width="+str(thickness)+", thickness="+str(width)+", offset="+str(offsetFromWall)+", shiftEnds="+str([shiftEndVectors[2],shiftEndVectors[1]])+")\r\n"
     
 #print shadingSystem
 print "Done"
